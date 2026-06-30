@@ -175,9 +175,20 @@ def refine_with_hermes(source, candidates, audience_context="", command="hermes"
         return candidates,_parse_json(proc.stdout)
     except Exception as exc: return candidates,f"Hermes non disponibile, fallback locale: {str(exc)[:220]}"
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model=""):
+def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
+    """Sceglie i contenuti Discover da usare come base per la ricerca competitor.
+    'cosa funziona' = top per click; altrimenti per opportunità o crescita."""
+    d=analyzed.copy()
+    if strategy=="Top per click (cosa funziona)" and "clicks_current" in d:
+        return d.sort_values("clicks_current",ascending=False).head(limit)
+    if strategy=="In crescita" and "growth_pct" in d:
+        return d.sort_values("growth_pct",ascending=False).head(limit)
+    key="opportunity_score" if "opportunity_score" in d else d.columns[0]
+    return d.sort_values(key,ascending=False).head(limit)
+
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)"):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
-    for _,source_series in out.head(max_topics).iterrows():
+    for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
         source=source_series.to_dict(); seen=set(); source_rows=[]
         for query in build_queries(source):
             if provider=="Piano locale":
