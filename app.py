@@ -47,6 +47,7 @@ with st.sidebar:
     st.header("Ricerca competitor/fresca")
     research_provider=st.selectbox("Provider",["AI (LLM) + Web scraper","Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"],help="AI (LLM) raffina le evidenze con OpenAI/Anthropic e usa il match semantico via embeddings; richiede una API key in .env, altrimenti torna automaticamente alle euristiche locali.")
     seed_strategy=st.selectbox("Contenuti da analizzare",["Top per click (cosa funziona)","Migliori per opportunità","In crescita"],help="Da quali contenuti Discover partire per cercare coperture competitor simili.")
+    min_match=st.slider("Soglia di pertinenza fonti (%)",0,100,35,help="Mostra solo le coperture competitor con un match (semantico o euristico) sopra questa soglia. Alza il valore per fonti più precise.")
     own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
     feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml\nhttps://www.agi.it/rss\nhttps://www.rainews.it/rss/tutti\nhttps://www.wired.it/feed/rss\nhttps://www.corriere.it/rss/homepage.xml")
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
@@ -131,8 +132,11 @@ with tabs[2]:
             real=research[research.url.fillna("").ne("")] if "url" in research else research
             c1,c2,c3=st.columns(3)
             c1.metric("Fonti reali",len(real)); c2.metric("Domini",real.competitor_domain.replace("",pd.NA).dropna().nunique() if "competitor_domain" in real else 0); c3.metric("Pagine estratte",real.scrape_status.fillna("").str.startswith("OK").sum() if "scrape_status" in real else 0)
-            st.subheader("Suggerimenti editoriali per il tuo pubblico")
-            suggestions=real.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
+            st.subheader("Suggerimenti editoriali dai tuoi contenuti Discover che funzionano")
+            relevant=real[real.competitor_match_score.fillna(0)>=min_match] if "competitor_match_score" in real else real
+            suggestions=relevant.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
+            if suggestions.empty:
+                st.info(f"Nessuna fonte competitor sopra la soglia di pertinenza ({min_match}%). Abbassa la soglia nella sidebar o riprova la ricerca.")
             for _,item in suggestions.iterrows():
                 with st.container(border=True):
                     st.markdown(f"#### {item.get('article_suggestion','Idea da sviluppare')}")

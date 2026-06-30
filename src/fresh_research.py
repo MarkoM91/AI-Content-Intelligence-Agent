@@ -124,13 +124,25 @@ def scrape_article(url):
     except Exception as exc:
         return {"scraped_title":"","scraped_excerpt":"","scrape_status":f"Errore: {str(exc)[:180]}","resolved_url":url}
 
+def seed_label(source):
+    """Etichetta umana del contenuto Discover vincente: preferisce il titolo
+    reale (H1/crawl), altrimenti il topic senza il prefisso di categoria."""
+    for key in ("h1","title_crawled","title"):
+        value=str(source.get(key,"") or "").strip()
+        if value: return value[:90]
+    topic=str(source.get("topic","") or "").strip()
+    category=str(source.get("category","") or "").strip().lower()
+    words=[w for w in topic.split() if w.lower()!=category]
+    return (" ".join(words) or topic or "tema da definire").title()[:90]
+
 def _recommendation(source, external_title, angle, gap):
-    topic=str(source.get("topic","tema")).strip().title()
+    label=seed_label(source)
     formats={"news update":"Aggiornamento / timeline","guida/how-to":"Guida pratica","dati/report":"Analisi dati","opinione":"Analisi editoriale","analisi":"Approfondimento"}
-    suggestion=f"{topic}: cosa sta cambiando e perché conta davvero"
-    reason=(f"Il tema ha già prodotto segnali Discover ({source.get('status','')}, "
-            f"score {source.get('opportunity_score',0)}). La fonte esterna usa l’angolo “{angle}”; "
-            f"la proposta conserva il tema validato ma aggiunge {gap.lower()}.")
+    hooks={"news update":"l’aggiornamento che mancava","guida/how-to":"la guida che cercavano","dati/report":"i numeri spiegati per il tuo pubblico","opinione":"l’analisi con fonti verificabili","analisi":"scenari e cosa cambia davvero"}
+    suggestion=f"{label}: {hooks.get(angle,'l’approfondimento originale')}"
+    reason=(f"Questo contenuto ha già funzionato su Discover ({source.get('status','')}, "
+            f"{int(source.get('clicks_current',0) or 0)} click, score {source.get('opportunity_score',0)}). "
+            f"La fonte esterna usa l’angolo “{angle}”; la proposta conserva il tema validato ma aggiunge {gap.lower()}.")
     return suggestion,reason,formats.get(angle,"Approfondimento")
 
 def refine_with_llm(source, candidates, audience_context="", provider="OpenAI", model=""):
