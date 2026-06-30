@@ -11,7 +11,7 @@ from src.fresh_research import add_research_to_dataframe
 from src.llm import generate_brief
 from src.agents import propose_actions
 from src.reporting import generate_markdown_report, generate_json_export
-from src.storage import save_snapshot, list_snapshots, load_snapshot
+from src.storage import save_snapshot, load_snapshot
 
 load_dotenv(); st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
 st.title("AI Content Intelligence Agent")
@@ -20,6 +20,15 @@ st.caption("GSC/Discover → scoring → crawler → competitor research → bri
 DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"briefs":[],"approvals":[],"hermes_notes":[],"mode_label":"Demo CSV"}
 for k,v in DEFAULTS.items():
     if k not in st.session_state: st.session_state[k]=v
+if "archive_restored" not in st.session_state:
+    st.session_state.archive_restored=True
+    stored=load_snapshot()
+    if stored and st.session_state.analyzed is None:
+        st.session_state.short_df=stored["short_df"]
+        st.session_state.long_df=stored["long_df"]
+        st.session_state.analyzed=stored["analyzed"]
+        st.session_state.gsc_info=stored["metadata"]
+        st.session_state.mode_label=f"Snapshot locale #{stored['id']}"
 
 with st.sidebar:
     st.header("Contesto cliente")
@@ -57,7 +66,7 @@ with tabs[0]:
         if st.button("Confronta",disabled=a is None or b is None,type="primary"):
             st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
     else:
-        cfg=st.text_input("File configurazione","gsc_config.yaml")
+        cfg="gsc_config.yaml"
         range_days=st.number_input("Periodo Discover corrente (giorni)",min_value=7,max_value=480,value=90,step=1,help="Confrontato con il periodo precedente della stessa durata.")
         local_config_exists=Path(cfg).exists()
         cloud_secrets_ready=False
@@ -87,18 +96,6 @@ with tabs[0]:
                     snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {current_days}g {info1['start']} → {info1['end']}",st.session_state.gsc_info)
                     st.success(f"Dati salvati nell’archivio locale (snapshot #{snapshot_id}).")
             except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
-    st.subheader("Archivio dati locale")
-    snapshots=list_snapshots()
-    if snapshots:
-        selected_snapshot=st.selectbox("Snapshot salvato",snapshots,format_func=lambda s:f"#{s['id']} · {s['label']} · {s['created_at'][:16].replace('T',' ')}")
-        if st.button("Carica snapshot senza interrogare GSC"):
-            stored=load_snapshot(selected_snapshot["id"])
-            st.session_state.short_df=stored["short_df"]; st.session_state.long_df=stored["long_df"]; st.session_state.analyzed=stored["analyzed"]; st.session_state.gsc_info=stored["metadata"]
-            st.success("Snapshot caricato. Puoi passare direttamente ad Analisi o Competitor research.")
-    else: st.caption("Nessuno snapshot salvato. Il primo download GSC verrà archiviato automaticamente.")
-    if st.session_state.analyzed is not None and st.button("Salva lo stato corrente nell’archivio"):
-        snapshot_id=save_snapshot(st.session_state.analyzed,st.session_state.short_df,st.session_state.long_df,"Salvataggio manuale",st.session_state.gsc_info)
-        st.success(f"Stato salvato come snapshot #{snapshot_id}.")
     if st.session_state.short_df is not None: st.dataframe(st.session_state.short_df.head(50),use_container_width=True)
 
 with tabs[1]:
