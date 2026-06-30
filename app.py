@@ -23,39 +23,77 @@ for _secret_key in ("OPENAI_API_KEY","ANTHROPIC_API_KEY","SERPER_API_KEY"):
 st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
 
 st.markdown("""<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html, body, [class*="css"]{font-family:'Inter',sans-serif;}
-.block-container{padding-top:1.6rem;}
-.hero{background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#ec4899 100%);border-radius:18px;padding:26px 30px;color:#fff;margin-bottom:14px;box-shadow:0 10px 30px rgba(99,102,241,.25);}
-.hero h1{margin:0;font-size:1.85rem;font-weight:800;letter-spacing:-.5px;}
-.hero p{margin:.4rem 0 0;opacity:.92;font-size:.95rem;}
-.hero .pipe span{background:rgba(255,255,255,.18);padding:3px 11px;border-radius:999px;font-size:.76rem;margin:10px 6px 0 0;display:inline-block;}
-[data-testid="stMetric"]{background:#fff;border:1px solid #ececf3;border-radius:14px;padding:14px 18px;box-shadow:0 2px 8px rgba(16,24,40,.04);}
-[data-testid="stMetricValue"]{font-weight:700;color:#4f46e5;}
-button[data-baseweb="tab"]{font-weight:600;font-size:.95rem;}
-.sugg-card{background:#fff;border:1px solid #ececf3;border-left:4px solid #6366f1;border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(16,24,40,.05);}
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+:root{--ink:#17231f;--muted:#66736e;--paper:#f7f8f5;--surface:#fff;--line:#dfe5e1;--accent:#176b52;--accent-2:#d7efe5;--warm:#a76532;}
+html,body,[class*="css"]{font-family:'DM Sans',sans-serif;color:var(--ink);}
+.stApp{background:var(--paper);}
+.block-container{max-width:1320px;padding-top:1.25rem;padding-bottom:4rem;}
+h1,h2,h3,h4{font-family:'Manrope',sans-serif!important;letter-spacing:-.025em;color:var(--ink);}
+[data-testid="stSidebar"]{background:#eef1ed;border-right:1px solid #d8dfda;}
+[data-testid="stSidebar"]>div:first-child{padding-top:1.4rem;}
+[data-testid="stSidebar"] h2{font-size:1rem;text-transform:uppercase;letter-spacing:.09em;color:#42534c;margin-top:1.7rem;}
+[data-testid="stSidebar"] label,[data-testid="stSidebar"] p{font-size:.86rem;}
+input,textarea,[data-baseweb="select"]>div{border-color:#ced7d1!important;border-radius:10px!important;background:#fff!important;}
+.hero{position:relative;overflow:hidden;background:#14241f;border:1px solid #2d4039;border-radius:20px;padding:34px 38px 30px;color:#fff;margin-bottom:18px;box-shadow:0 16px 45px rgba(25,43,37,.14);}
+.hero:after{content:"";position:absolute;width:260px;height:260px;border:1px solid rgba(255,255,255,.09);border-radius:50%;right:-65px;top:-120px;box-shadow:0 0 0 42px rgba(255,255,255,.025),0 0 0 84px rgba(255,255,255,.018);}
+.hero .eyebrow{color:#9fd2bf;font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;}
+.hero h1{position:relative;margin:0;max-width:780px;font-size:2.05rem;font-weight:800;line-height:1.15;color:#fff;z-index:1;}
+.hero>p{position:relative;margin:.8rem 0 1.15rem;max-width:760px;color:#dce8e2;font-size:1rem;line-height:1.55;z-index:1;}
+.hero .pipe{position:relative;display:flex;flex-wrap:wrap;gap:7px;z-index:1;}
+.hero .pipe span{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:5px 11px;border-radius:999px;color:#e8f1ed;font-size:.74rem;font-weight:600;}
+.trust-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 22px;}
+.trust-item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 15px;color:#4e5d57;font-size:.82rem;box-shadow:0 3px 12px rgba(23,35,31,.035);}
+.trust-item b{display:block;color:var(--ink);font-family:'Manrope';font-size:.88rem;margin-bottom:2px;}
+[data-testid="stMetric"]{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:0 4px 18px rgba(23,35,31,.045);}
+[data-testid="stMetricLabel"]{color:var(--muted);font-weight:600;}
+[data-testid="stMetricValue"]{font-family:'Manrope';font-weight:800;color:var(--accent);letter-spacing:-.035em;}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:4px;background:#e9ede9;padding:5px;border-radius:12px;margin-bottom:18px;}
+button[data-baseweb="tab"]{height:42px;border-radius:9px!important;padding:0 16px!important;font-weight:700;font-size:.86rem;color:#5e6c66;}
+button[data-baseweb="tab"][aria-selected="true"]{background:#fff;color:var(--ink);box-shadow:0 2px 9px rgba(23,35,31,.08);}
+button[data-baseweb="tab"]>div[data-testid="stMarkdownContainer"]>p{font-size:.86rem;}
+.stButton>button,.stDownloadButton>button{border-radius:10px;border:1px solid #bfcac4;font-weight:700;min-height:42px;transition:all .18s ease;}
+.stButton>button[kind="primary"]{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 7px 18px rgba(23,107,82,.18);}
+.stButton>button:hover,.stDownloadButton>button:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-1px);}
+.stButton>button[kind="primary"]:hover{background:#115841;color:#fff;}
+[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff;}
+[data-testid="stAlert"]{border-radius:12px;border-width:1px;}
+[data-testid="stExpander"]{background:#fff;border:1px solid var(--line);border-radius:12px;}
+.sugg-card{background:#fff;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:14px;padding:18px 20px;margin-bottom:13px;box-shadow:0 5px 20px rgba(23,35,31,.05);transition:transform .18s ease,box-shadow .18s ease;}
+.sugg-card:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(23,35,31,.08);}
 .sugg-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
-.sugg-head h4{margin:0;font-size:1.06rem;font-weight:700;color:#1e1b4b;line-height:1.35;}
-.sugg-reason{color:#475467;font-size:.91rem;margin:.55rem 0 .75rem;line-height:1.5;}
-.sugg-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
-.sugg-meta span{background:#f4f4fb;color:#5b21b6;padding:3px 10px;border-radius:8px;font-size:.77rem;font-weight:500;}
-.badge{padding:3px 11px;border-radius:999px;font-weight:700;font-size:.78rem;white-space:nowrap;}
-.src-btn{margin-left:auto;background:#6366f1;color:#fff!important;text-decoration:none;padding:6px 15px;border-radius:8px;font-size:.81rem;font-weight:600;}
-.src-btn:hover{background:#4f46e5;}
-@media (prefers-color-scheme:dark){
-  [data-testid="stMetric"]{background:#1c1c28;border-color:#2e2e40;}
-  [data-testid="stMetricValue"]{color:#a5b4fc;}
-  .sugg-card{background:#1c1c28;border-color:#2e2e40;border-left-color:#818cf8;box-shadow:0 2px 10px rgba(0,0,0,.3);}
-  .sugg-head h4{color:#e0e7ff;}
-  .sugg-reason{color:#aab1c2;}
-  .sugg-meta span{background:#2a2440;color:#c4b5fd;}
+.sugg-head h4{margin:0;font-size:1.03rem;font-weight:800;color:var(--ink);line-height:1.4;}
+.sugg-reason{color:#56645e;font-size:.9rem;margin:.6rem 0 .85rem;line-height:1.55;}
+.sugg-meta{display:flex;flex-wrap:wrap;gap:7px;align-items:center;}
+.sugg-meta span{background:#f0f4f1;color:#3c534a;padding:4px 9px;border-radius:7px;font-size:.75rem;font-weight:600;}
+.badge{padding:4px 10px;border-radius:999px;font-weight:800;font-size:.74rem;white-space:nowrap;}
+.src-btn{margin-left:auto;background:var(--ink);color:#fff!important;text-decoration:none;padding:7px 13px;border-radius:8px;font-size:.78rem;font-weight:700;}
+.src-btn:hover{background:var(--accent);}
+@media(max-width:760px){
+  .block-container{padding:1rem .85rem 5rem;}
+  .hero{padding:25px 22px;border-radius:16px;}
+  .hero h1{font-size:1.55rem;line-height:1.2;}
+  .hero>p{font-size:.9rem;}
+  .hero .pipe span:nth-child(n+5){display:none;}
+  .trust-strip{grid-template-columns:1fr;gap:7px;}
+  .trust-item{padding:10px 12px;}
+  [data-testid="stTabs"] [data-baseweb="tab-list"]{overflow-x:auto;justify-content:flex-start;}
+  button[data-baseweb="tab"]{padding:0 12px!important;white-space:nowrap;}
+  [data-testid="stHorizontalBlock"]{flex-wrap:wrap;gap:.6rem;}
+  [data-testid="stHorizontalBlock"]>[data-testid="column"]{min-width:100%!important;width:100%!important;flex:1 1 100%!important;}
+  .sugg-head{display:block;}.badge{display:inline-block;margin-top:8px;}.src-btn{width:100%;text-align:center;margin:5px 0 0;}
 }
 </style>""",unsafe_allow_html=True)
 
 st.markdown("""<div class="hero">
-<h1>🧭 AI Content Intelligence Agent</h1>
-<p>Da Google Discover ai contenuti vincenti: analisi delle performance, ricerca competitor semantica e brief con human-in-the-loop.</p>
-<div class="pipe"><span>GSC / Discover</span><span>Scoring</span><span>Crawler</span><span>Competitor research</span><span>Brief AI</span><span>Approvazione umana</span><span>Report</span></div>
+<div class="eyebrow">Editorial intelligence workspace</div>
+<h1>Dai segnali di audience alla prossima decisione editoriale.</h1>
+<p>Un workflow verificabile per capire cosa funziona, leggere il mercato e trasformare le evidenze in contenuti pronti da approvare.</p>
+<div class="pipe"><span>01 · Performance</span><span>02 · Pattern</span><span>03 · Competitor</span><span>04 · Brief</span><span>05 · Approval</span><span>06 · Report</span></div>
+</div>
+<div class="trust-strip">
+  <div class="trust-item"><b>Evidenze prima delle idee</b>GSC, engagement e fonti reali guidano ogni proposta.</div>
+  <div class="trust-item"><b>Controllo editoriale</b>Le decisioni sensibili restano human-in-the-loop.</div>
+  <div class="trust-item"><b>Output operativo</b>Brief, priorità e report pronti per la redazione.</div>
 </div>""",unsafe_allow_html=True)
 
 import html as _html
@@ -70,9 +108,9 @@ def _suggestion_card(item):
     reason=_html.escape(str(item.get("audience_reason","")))
     fmt=_html.escape(str(item.get("recommended_format","") or "")); angle=_html.escape(str(item.get("angle","") or ""))
     dom=_html.escape(str(item.get("competitor_domain","") or "")); url=str(item.get("url","") or "")
-    dom_chip=(f'<span style="background:#fee2e2;color:#b91c1c">⭐ {dom}</span>' if item.get("is_benchmark") else f'<span>🌐 {dom}</span>') if dom else ''
-    meta=f'<span>📐 {fmt}</span><span>🎯 {angle}</span>'+dom_chip
-    link=f'<a class="src-btn" href="{_html.escape(url)}" target="_blank">Apri fonte ↗</a>' if url else ''
+    dom_chip=(f'<span style="background:#f6e8df;color:#8a4928">Benchmark · {dom}</span>' if item.get("is_benchmark") else f'<span>Fonte · {dom}</span>') if dom else ''
+    meta=f'<span>Formato · {fmt}</span><span>Angolo · {angle}</span>'+dom_chip
+    link=f'<a class="src-btn" href="{_html.escape(url)}" target="_blank">Apri evidenza ↗</a>' if url else ''
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>{_match_badge(item.get("competitor_match_score",0))}</div>'
             f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')
 
@@ -109,15 +147,17 @@ if "archive_restored" not in st.session_state:
         st.session_state.mode_label=f"Snapshot locale #{stored['id']}"
 
 with st.sidebar:
-    st.header("Contesto cliente")
+    st.markdown("**NEWSROOM OS**")
+    st.caption("Configura il contesto. Il lavoro editoriale resta nell'area principale.")
+    st.header("Mandato editoriale")
     client=st.text_input("Cliente / progetto","Agenzia digitale demo")
     context=st.text_area("Target, mercato e tono","Editore italiano; tono autorevole, chiaro e verificabile.")
     goal=st.text_input("Obiettivo","Crescita organica e opportunità editoriali")
-    st.header("Dati")
+    st.header("Fonte dati")
     input_mode=st.radio("Modalità",["Google Search Console API","Export engagement CSV (7 giorni)","Demo CSV"])
-    st.header("Crawler pagine")
+    st.header("Profondità analisi")
     max_crawl=st.slider("URL da analizzare",1,20,5); delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
-    st.header("Ricerca competitor/fresca")
+    st.header("Ricerca di mercato")
     research_provider=st.selectbox("Provider",["AI (LLM) + Web scraper","Serper + Google News","Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"],help="AI (LLM) raffina le evidenze con OpenAI/Anthropic e usa il match semantico via embeddings; richiede una API key in .env, altrimenti torna automaticamente alle euristiche locali.")
     engagement_loaded=st.session_state.analyzed is not None and "pageviews" in st.session_state.analyzed
     seed_options=(["Top per engagement totale","Alta permanenza","Filoni ricorrenti"] if engagement_loaded else [])+["Top per click (cosa funziona)","Migliori per opportunità","In crescita"]
@@ -130,14 +170,15 @@ with st.sidebar:
     from src.fresh_research import DEFAULT_RSS_FEEDS
     feeds=st.text_area("Feed RSS, uno per riga","\n".join(DEFAULT_RSS_FEEDS),height=160)
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
-    st.header("Generazione brief")
+    st.header("Motore editoriale")
     brief_mode=st.radio("Motore",["AI con LLM","Regole locali"])
     llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
     model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
 
-tabs=st.tabs(["📥 Dati","📊 Analisi + crawler","🔍 Competitor research","📝 Brief e approvazioni","📤 Report"])
+tabs=st.tabs(["01  Dati","02  Analisi","03  Competitor","04  Brief e approval","05  Report"])
 with tabs[0]:
-    st.subheader("Acquisizione dati")
+    st.caption("STEP 01 · RACCOGLI LE EVIDENZE")
+    st.subheader("Collega il segnale che vuoi trasformare in decisioni")
     if input_mode=="Demo CSV":
         st.info("Dataset dimostrativo incluso: periodo corrente di 3 giorni e baseline di 7 giorni.")
         if st.button("Carica e analizza demo",type="primary"):
@@ -193,6 +234,8 @@ with tabs[0]:
     if st.session_state.short_df is not None: _show_table(st.session_state.short_df.head(50))
 
 with tabs[1]:
+    st.caption("STEP 02 · CAPIRE COSA FUNZIONA")
+    st.subheader("Performance, qualità e pattern editoriali")
     analyzed=st.session_state.analyzed
     if analyzed is None: st.info("Carica o genera i dati nella scheda Dati.")
     else:
@@ -221,6 +264,8 @@ with tabs[1]:
         if st.session_state.crawl_log: st.dataframe(pd.DataFrame(st.session_state.crawl_log),use_container_width=True)
 
 with tabs[2]:
+    st.caption("STEP 03 · LEGGERE IL MERCATO")
+    st.subheader("Trova coperture comparabili e spazi editoriali liberi")
     if st.session_state.analyzed is None: st.info("Prima esegui l’analisi.")
     else:
         provider=research_provider
@@ -245,7 +290,7 @@ with tabs[2]:
             real=research[research.url.fillna("").ne("")] if "url" in research else research
             c1,c2,c3=st.columns(3)
             c1.metric("Fonti reali",len(real)); c2.metric("Domini",real.competitor_domain.replace("",pd.NA).dropna().nunique() if "competitor_domain" in real else 0); c3.metric("Pagine estratte",real.scrape_status.fillna("").str.startswith("OK").sum() if "scrape_status" in real else 0)
-            st.subheader(f"💡 Suggerimenti editoriali guidati dai segnali {signal_source}")
+            st.subheader(f"Suggerimenti editoriali guidati dai segnali {signal_source}")
             relevant=real[real.competitor_match_score.fillna(0)>=min_match] if "competitor_match_score" in real else real
             suggestions=relevant.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
             if suggestions.empty:
@@ -258,12 +303,14 @@ with tabs[2]:
                 result=note.get("result")
                 if isinstance(result,str): st.info(result)
                 elif isinstance(result,dict) and result.get("suggestions"):
-                    st.subheader("🤖 Raccomandazioni AI (LLM / Hermes)")
+                    st.subheader("Raccomandazioni AI (LLM / Hermes)")
                     for suggestion in result["suggestions"]:
                         urls=suggestion.get("source_urls") or []
                         st.markdown(_suggestion_card({"article_suggestion":suggestion.get("title","Idea AI"),"audience_reason":suggestion.get("audience_reason",""),"recommended_format":suggestion.get("format",""),"angle":suggestion.get("angle",""),"url":urls[0] if isinstance(urls,list) and urls else "","competitor_match_score":0}),unsafe_allow_html=True)
 
 with tabs[3]:
+    st.caption("STEP 04 · DALL'IDEA ALLA DECISIONE")
+    st.subheader("Costruisci il brief e mantieni il controllo umano")
     if st.session_state.analyzed is None: st.info("Prima esegui l’analisi.")
     else:
         options=st.session_state.analyzed.head(20); selected=st.selectbox("Contenuto",options.url,format_func=lambda u: f"{options.loc[options.url.eq(u),'topic'].iloc[0]} — {u}")
@@ -281,6 +328,8 @@ with tabs[3]:
                 opts=["In attesa","Approva","Modifica","Rifiuta","Auto-approvata"]; a["stato"]=c3.selectbox("Stato",opts,index=opts.index(a["stato"]),key=f"approval_{i}",label_visibility="collapsed")
 
 with tabs[4]:
+    st.caption("STEP 05 · CONSEGNA IL LAVORO")
+    st.subheader("Un report operativo, non un altro dashboard")
     if st.session_state.analyzed is None: st.info("Non ci sono dati da esportare.")
     else:
         md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client); workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label})
