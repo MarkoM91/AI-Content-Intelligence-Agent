@@ -120,6 +120,16 @@ def reddit_search(query, window="7d", limit=10):
             "description":"","published":"","source":{"title":data.get("subreddit_name_prefixed","Reddit")}})
     return out
 
+def serper_news_search(query,api_key,window="1d",limit=10):
+    """Ricerca news fresche via Serper.dev; ritorna entry compatibili con RSS."""
+    if not api_key: return []
+    tbs={"1d":"qdr:d","7d":"qdr:w","30d":"qdr:m"}.get(window,"qdr:w")
+    response=requests.post("https://google.serper.dev/news",headers={"X-API-KEY":api_key,"Content-Type":"application/json"},json={"q":query,"gl":"it","hl":"it","num":limit,"tbs":tbs},timeout=20)
+    response.raise_for_status(); out=[]
+    for item in response.json().get("news",[])[:limit]:
+        out.append({"title":item.get("title",""),"link":item.get("link",""),"summary":item.get("snippet",""),"description":item.get("snippet",""),"published":item.get("date",""),"source":{"title":item.get("source","")}})
+    return out
+
 def custom_rss_search(feed_urls, query):
     entries=[]
     for url in feed_urls: entries.extend(_parse_feed(url.strip()).entries)
@@ -281,7 +291,7 @@ def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     key="opportunity_score" if "opportunity_score" in d else d.columns[0]
     return d.sort_values(key,ascending=False).head(limit)
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d",include_reddit=True):
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d",include_reddit=True,serper_api_key=""):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
     window=str(freshness or "7d").strip()
     for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
@@ -304,7 +314,10 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                 try:
                     if kind=="reddit": return spec,reddit_search(query,window),None
                     if provider=="RSS personalizzati": return spec,custom_rss_search(feed_urls,query),None
-                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:{window}").entries,None
+                    search_query=query if kind=="site" or "when:" in query else f"{query} when:{window}"
+                    entries=list(google_news_rss_search(search_query).entries)
+                    if serper_api_key: entries+=serper_news_search(query,serper_api_key,window)
+                    return spec,entries,None
                 except Exception as exc: return spec,[],str(exc)
             with ThreadPoolExecutor(max_workers=8) as pool:
                 fetched=list(pool.map(_fetch,search_specs))

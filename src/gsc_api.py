@@ -10,6 +10,11 @@ def get_credentials(config):
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     g=config["gsc"]
+    if g.get("service_account_info") or g.get("service_account_path"):
+        from google.oauth2 import service_account
+        if g.get("service_account_info"):
+            return service_account.Credentials.from_service_account_info(g["service_account_info"],scopes=SCOPES)
+        return service_account.Credentials.from_service_account_file(g["service_account_path"],scopes=SCOPES)
     if g.get("authorized_user_info"):
         info=g["authorized_user_info"]
         creds=Credentials(token=None,refresh_token=info["refresh_token"],token_uri=info.get("token_uri","https://oauth2.googleapis.com/token"),client_id=info["client_id"],client_secret=info["client_secret"],scopes=SCOPES)

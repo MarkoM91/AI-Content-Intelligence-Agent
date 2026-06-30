@@ -55,3 +55,20 @@ Lo scoring è trasparente e dimostrativo, non causale: combina volume, gap CTR e
 `Web scraper + Google News` è il percorso senza API: parte dalle pagine Discover migliori, cerca fonti reali, deduplica i risultati (anche per URL canonicalizzata, ignorando parametri di tracking), estrae il testo delle pagine e genera suggerimenti editoriali motivati.
 
 `Hermes Agent + Web scraper` passa le evidenze raccolte all'installazione locale ufficiale di Hermes tramite la modalità one-shot `hermes -z`. Hermes deve essere installato e autenticato separatamente; se non è disponibile, l'app mantiene il risultato del web scraper e mostra un fallback esplicito. Documentazione ufficiale: https://hermes-agent.nousresearch.com/docs/reference/cli-commands
+
+## Esecuzione automatica multi-sito
+
+Il runner `main.py` elabora più proprietà Discover senza interfaccia: legge gli ultimi 3 e 7 giorni, analizza e scansiona le pagine, cerca fonti recenti con Google News, Reddit e Serper opzionale, salva CSV e può aggiornare un Google Sheet condiviso.
+
+1. Creare un service account Google e abilitare Search Console API, Google Sheets API e Google Drive API.
+2. Aggiungere l'email del service account come utente di ogni proprietà Search Console e condividere con la stessa email il foglio Google di destinazione.
+3. Copiare `multi_site.example.yaml` in `multi_site.yaml`, quindi configurare siti, percorso del JSON privato e ID del foglio.
+4. Non inserire mai il JSON del service account o `multi_site.yaml` nel repository.
+
+```powershell
+python main.py --config multi_site.yaml --dry-run
+python main.py --config multi_site.yaml
+python main.py --config multi_site.yaml --site "Affaritaliani"
+```
+
+`--dry-run` evita la scrittura su Google Sheets ma produce comunque i CSV in `outputs/`. La chiave Serper può essere impostata nel file privato oppure nella variabile d'ambiente `SERPER_API_KEY`; senza chiave restano attivi Google News RSS e Reddit.

@@ -7,3 +7,6 @@ gsc_exports/
 data/
 *.db
 .streamlit/secrets.toml
+multi_site.yaml
+outputs/
+*service-account*.json

@@ -1,0 +1,27 @@
+global:
+  service_account_path: "C:/Users/marco/.config/ai-content-agent/service-account.json"
+  fresh_days: 3
+  trend_days: 7
+  row_limit: 250
+  crawl_urls: 10
+  crawl_delay: 0.1
+  research_topics: 5
+  freshness: "1d"
+  include_reddit: true
+  serper_api_key: ""
+  output_dir: "./outputs"
+  audience: "Lettori italiani interessati alle notizie del momento"
+  seed_strategy: "Top per click (cosa funziona)"
+  google_sheets:
+    enabled: false
+    service_account_path: "C:/Users/marco/.config/ai-content-agent/service-account.json"
+    spreadsheet_id: "INSERISCI_ID_DEL_FOGLIO"
+
+sites:
+  - name: "Affaritaliani"
+    property: "https://www.affaritaliani.it/"
+    own_domain: "affaritaliani.it"
+    audience: "Lettori italiani di economia, politica, cronaca e lifestyle"
+  - name: "Secondo sito"
+    property: "sc-domain:example.com"
+    own_domain: "example.com"
