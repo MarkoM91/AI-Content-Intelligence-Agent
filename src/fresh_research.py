@@ -266,8 +266,9 @@ def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     key="opportunity_score" if "opportunity_score" in d else d.columns[0]
     return d.sort_values(key,ascending=False).head(limit)
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)"):
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d"):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
+    window=str(freshness or "7d").strip()
     for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
         source=source_series.to_dict(); seen=set(); source_rows=[]
         plan=llm_plan_research(source,llm_provider,llm_model) if use_llm else None
@@ -277,7 +278,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         # broad queries (sullo stesso formato) + ricerca mirata site: sui competitor curati
         search_specs=[("broad",q) for q in queries]
         if is_google and topic:
-            search_specs+=[("site",f"site:{d} {topic} when:7d",d) for d in CURATED_COMPETITORS]
+            search_specs+=[("site",f"site:{d} {topic} when:{window}",d) for d in CURATED_COMPETITORS]
         if provider=="Piano locale":
             for kind,query,*_ in search_specs:
                 source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider})
@@ -286,7 +287,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                 kind,query=spec[0],spec[1]
                 try:
                     if provider=="RSS personalizzati": return spec,custom_rss_search(feed_urls,query),None
-                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:7d").entries,None
+                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:{window}").entries,None
                 except Exception as exc: return spec,[],str(exc)
             with ThreadPoolExecutor(max_workers=8) as pool:
                 fetched=list(pool.map(_fetch,search_specs))
