@@ -33,6 +33,15 @@ Nota deployment: il filesystem di Streamlit Community Cloud è effimero. Per per
 
 Il cloud non può leggere `gsc_config.yaml` o i file OAuth del computer locale. Copiare la struttura di `.streamlit/secrets.toml.example` in **Manage app → Settings → Secrets**, usando i valori del token OAuth locale autorizzato. L'app rileva automaticamente `[gsc]` e `[google_oauth]` e usa il refresh token senza avviare un browser OAuth sul server. Non inserire mai questi valori nel repository.
 
+Per generare automaticamente il file locale pronto da copiare:
+
+```powershell
+python scripts/generate_streamlit_secrets.py
+notepad .streamlit\secrets.toml
+```
+
+Il file reale è escluso da Git; soltanto il template senza credenziali viene versionato.
+
 ## Google Search Console
 
 Copiare `gsc_config.example.yaml` in `gsc_config.yaml` e indicare proprietà e credenziali OAuth Desktop App. Per Discover viene inviato `type: discover`; per Search `type: web`, senza filtro `searchAppearance`. Non versionare le credenziali.
