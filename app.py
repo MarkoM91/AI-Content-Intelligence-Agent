@@ -10,6 +10,7 @@ from src.fresh_research import add_research_to_dataframe
 from src.llm import generate_brief
 from src.agents import propose_actions
 from src.reporting import generate_markdown_report, generate_json_export
+from src.storage import save_snapshot, list_snapshots, load_snapshot
 
 load_dotenv(); st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
 st.title("AI Content Intelligence Agent")
@@ -31,7 +32,7 @@ with st.sidebar:
     st.header("Ricerca competitor/fresca")
     research_provider=st.selectbox("Provider",["Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"])
     own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
-    feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml")
+    feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml\nhttps://www.agi.it/rss\nhttps://www.rainews.it/rss/tutti\nhttps://www.wired.it/feed/rss\nhttps://www.corriere.it/rss/homepage.xml")
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
     st.header("Generazione brief")
     brief_mode=st.radio("Motore",["Regole locali","AI con LLM"])
@@ -56,15 +57,31 @@ with tabs[0]:
             st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
     else:
         cfg=st.text_input("File configurazione","gsc_config.yaml")
-        st.warning("OAuth apre il browser locale. Copia gsc_config.example.yaml e non versionare le credenziali.")
+        st.info("I download GSC riusciti vengono salvati nell’archivio locale. Il token OAuth viene riutilizzato automaticamente.")
         if st.button("Scarica da GSC",type="primary"):
             try:
-                from src.gsc_api import load_config,fetch_gsc
+                from src.gsc_api import load_config,fetch_gsc,get_credentials
                 conf=load_config(cfg); sd=conf.get("windows",{}).get("short_days",3); ld=conf.get("windows",{}).get("long_days",7)
-                short,info1=fetch_gsc(conf,sd); long,info2=fetch_gsc(conf,ld)
+                credentials=get_credentials(conf)
+                short,info1=fetch_gsc(conf,sd,credentials=credentials); long,info2=fetch_gsc(conf,ld,credentials=credentials)
                 if short.empty: st.warning("GSC non ha restituito righe per il periodo selezionato.")
-                else: st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"short":info1,"long":info2}; st.session_state.analyzed=analyze_comparison(short,long,sd,ld)
+                else:
+                    st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"short":info1,"long":info2}; st.session_state.analyzed=analyze_comparison(short,long,sd,ld)
+                    snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {info1['start']} → {info1['end']}",st.session_state.gsc_info)
+                    st.success(f"Dati salvati nell’archivio locale (snapshot #{snapshot_id}).")
             except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
+    st.subheader("Archivio dati locale")
+    snapshots=list_snapshots()
+    if snapshots:
+        selected_snapshot=st.selectbox("Snapshot salvato",snapshots,format_func=lambda s:f"#{s['id']} · {s['label']} · {s['created_at'][:16].replace('T',' ')}")
+        if st.button("Carica snapshot senza interrogare GSC"):
+            stored=load_snapshot(selected_snapshot["id"])
+            st.session_state.short_df=stored["short_df"]; st.session_state.long_df=stored["long_df"]; st.session_state.analyzed=stored["analyzed"]; st.session_state.gsc_info=stored["metadata"]
+            st.success("Snapshot caricato. Puoi passare direttamente ad Analisi o Competitor research.")
+    else: st.caption("Nessuno snapshot salvato. Il primo download GSC verrà archiviato automaticamente.")
+    if st.session_state.analyzed is not None and st.button("Salva lo stato corrente nell’archivio"):
+        snapshot_id=save_snapshot(st.session_state.analyzed,st.session_state.short_df,st.session_state.long_df,"Salvataggio manuale",st.session_state.gsc_info)
+        st.success(f"Stato salvato come snapshot #{snapshot_id}.")
     if st.session_state.short_df is not None: st.dataframe(st.session_state.short_df.head(50),use_container_width=True)
 
 with tabs[1]:

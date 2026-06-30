@@ -23,6 +23,10 @@ Nessuna API a pagamento è necessaria: `Demo CSV`, `Piano locale` e `Regole loca
 
 I dati restano in `st.session_state`: cambiare da Regole locali ad AI con LLM non azzera l'analisi.
 
+Ogni import GSC riuscito viene inoltre archiviato in `data/content_intelligence.db`. Dalla scheda **Dati → Archivio dati locale** è possibile ripristinare uno snapshot senza interrogare nuovamente Google. Il token OAuth viene salvato nel percorso privato indicato da `token_path`, così l'autorizzazione viene riutilizzata. La cartella `data/`, i database e i token non vengono versionati.
+
+Nota deployment: il filesystem di Streamlit Community Cloud è effimero. Per persistenza durevole in cloud, sostituire il backend SQLite con un database gestito (per esempio PostgreSQL/Supabase); SQLite è pensato per la demo locale.
+
 ## Google Search Console
 
 Copiare `gsc_config.example.yaml` in `gsc_config.yaml` e indicare proprietà e credenziali OAuth Desktop App. Per Discover viene inviato `type: discover`; per Search `type: web`, senza filtro `searchAppearance`. Non versionare le credenziali.

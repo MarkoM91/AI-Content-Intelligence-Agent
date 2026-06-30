@@ -1,6 +1,7 @@
 gsc:
   property: "https://www.affaritaliani.it/"
   credentials_path: "C:/Users/marco/.config/ai-content-agent/oauth-client.json"
+  token_path: "C:/Users/marco/.config/ai-content-agent/gsc-token.json"
   appearance: "discover"
   dimension: "page"
   row_limit: 250
@@ -9,4 +10,3 @@ windows:
   long_days: 7
 output:
   dir: "./gsc_exports"
-
