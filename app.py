@@ -13,7 +13,13 @@ from src.agents import propose_actions
 from src.reporting import generate_markdown_report, generate_json_export
 from src.storage import save_snapshot, load_snapshot
 
-load_dotenv(); st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
+load_dotenv()
+import os
+for _secret_key in ("OPENAI_API_KEY","ANTHROPIC_API_KEY"):
+    try:
+        if not os.getenv(_secret_key) and _secret_key in st.secrets: os.environ[_secret_key]=str(st.secrets[_secret_key])
+    except Exception: pass
+st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
 st.title("AI Content Intelligence Agent")
 st.caption("GSC/Discover → scoring → crawler → competitor research → brief → approvazione umana → report")
 
