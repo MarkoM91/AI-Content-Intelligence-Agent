@@ -40,6 +40,14 @@ button[data-baseweb="tab"]{font-weight:600;font-size:.95rem;}
 .badge{padding:3px 11px;border-radius:999px;font-weight:700;font-size:.78rem;white-space:nowrap;}
 .src-btn{margin-left:auto;background:#6366f1;color:#fff!important;text-decoration:none;padding:6px 15px;border-radius:8px;font-size:.81rem;font-weight:600;}
 .src-btn:hover{background:#4f46e5;}
+@media (prefers-color-scheme:dark){
+  [data-testid="stMetric"]{background:#1c1c28;border-color:#2e2e40;}
+  [data-testid="stMetricValue"]{color:#a5b4fc;}
+  .sugg-card{background:#1c1c28;border-color:#2e2e40;border-left-color:#818cf8;box-shadow:0 2px 10px rgba(0,0,0,.3);}
+  .sugg-head h4{color:#e0e7ff;}
+  .sugg-reason{color:#aab1c2;}
+  .sugg-meta span{background:#2a2440;color:#c4b5fd;}
+}
 </style>""",unsafe_allow_html=True)
 
 st.markdown("""<div class="hero">
@@ -64,6 +72,21 @@ def _suggestion_card(item):
     link=f'<a class="src-btn" href="{_html.escape(url)}" target="_blank">Apri fonte ↗</a>' if url else ''
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>{_match_badge(item.get("competitor_match_score",0))}</div>'
             f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')
+
+def _show_table(df):
+    """Tabella con formattazione ricca: barre per gli score, CTR in %,
+    URL cliccabili. Applica solo le colonne presenti."""
+    if df is None or getattr(df,"empty",True): return
+    d=df.copy(); cfg={}
+    for c in ("ctr","ctr_current","ctr_short","ctr_long"):
+        if c in d.columns:
+            d[c]=pd.to_numeric(d[c],errors="coerce")*100; cfg[c]=st.column_config.NumberColumn("CTR %",format="%.2f%%")
+    if "url" in d.columns: cfg["url"]=st.column_config.LinkColumn("URL",display_text=r"https?://(?:www\.)?([^/]+/.{0,32})")
+    if "opportunity_score" in d.columns: cfg["opportunity_score"]=st.column_config.ProgressColumn("Opportunità",min_value=0,max_value=100,format="%.0f")
+    if "competitor_match_score" in d.columns: cfg["competitor_match_score"]=st.column_config.ProgressColumn("Match",min_value=0,max_value=100,format="%.0f")
+    for c,(lbl,fmt) in {"clicks":("Click","%d"),"clicks_current":("Click","%d"),"impressions":("Impression","%d"),"impressions_current":("Impression","%d"),"growth_pct":("Crescita %","%.0f%%"),"position":("Posizione","%.1f")}.items():
+        if c in d.columns: cfg[c]=st.column_config.NumberColumn(lbl,format=fmt)
+    st.dataframe(d,use_container_width=True,column_config=cfg,hide_index=True)
 
 DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"briefs":[],"approvals":[],"hermes_notes":[],"mode_label":"Demo CSV"}
 for k,v in DEFAULTS.items():
@@ -139,14 +162,14 @@ with tabs[0]:
                     snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {current_days}g {info1['start']} → {info1['end']}",st.session_state.gsc_info)
                     st.success(f"Dati salvati nell’archivio locale (snapshot #{snapshot_id}).")
             except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
-    if st.session_state.short_df is not None: st.dataframe(st.session_state.short_df.head(50),use_container_width=True)
+    if st.session_state.short_df is not None: _show_table(st.session_state.short_df.head(50))
 
 with tabs[1]:
     analyzed=st.session_state.analyzed
     if analyzed is None: st.info("Carica o genera i dati nella scheda Dati.")
     else:
         c1,c2,c3=st.columns(3); c1.metric("URL",len(analyzed)); c2.metric("Impression correnti",int(analyzed.impressions_current.sum())); c3.metric("Click correnti",int(analyzed.clicks_current.sum()))
-        st.dataframe(analyzed,use_container_width=True)
+        _show_table(analyzed)
         if st.button("Avvia crawler sulle URL principali"):
             with st.spinner("Crawler in esecuzione..."):
                 enriched,logs=enrich_analyzed_dataframe(analyzed,max_crawl,delay); st.session_state.analyzed=enriched; st.session_state.crawl_log=logs
@@ -184,7 +207,7 @@ with tabs[2]:
             for _,item in suggestions.iterrows():
                 st.markdown(_suggestion_card(item),unsafe_allow_html=True)
             with st.expander("Evidenze e dati tecnici"):
-                st.dataframe(research,use_container_width=True)
+                _show_table(research)
             for note in st.session_state.hermes_notes:
                 result=note.get("result")
                 if isinstance(result,str): st.info(result)
