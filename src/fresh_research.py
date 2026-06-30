@@ -138,7 +138,8 @@ def refine_with_llm(source, candidates, audience_context="", provider="OpenAI", 
     Default consigliato: funziona ovunque con una API key, niente binari esterni.
     Ritorna dict {"suggestions":[...]} oppure una stringa di fallback."""
     import os
-    evidence=candidates[["title","url","snippet","scraped_excerpt","angle","suggested_gap"]].head(8).to_dict("records")
+    cols=[c for c in ("title","url","snippet","scraped_excerpt","angle","suggested_gap") if c in candidates.columns]
+    evidence=candidates[cols].head(8).to_dict("records")
     prompt=(f'Agisci come research editor italiano. Parti ESCLUSIVAMENTE dai dati Discover e dalle fonti web fornite. '
             f'Proponi 3 contenuti originali che risuonino col pubblico, senza copiare i competitor. '
             f'Restituisci solo JSON: {{"suggestions":[{{"title":"","angle":"","format":"","audience_reason":"","source_urls":[]}}]}}. '
@@ -166,7 +167,8 @@ def _parse_json(text):
 
 def refine_with_hermes(source, candidates, audience_context="", command="hermes", timeout=180):
     if not hermes_available(command): return candidates,"Hermes Agent non installato: usate raccomandazioni deterministiche."
-    evidence=candidates[["title","url","snippet","scraped_excerpt","angle","suggested_gap"]].head(8).to_dict("records")
+    cols=[c for c in ("title","url","snippet","scraped_excerpt","angle","suggested_gap") if c in candidates.columns]
+    evidence=candidates[cols].head(8).to_dict("records")
     prompt=f'''Agisci come research editor italiano. Parti ESCLUSIVAMENTE dai dati Discover e dalle fonti web fornite. Proponi 3 contenuti originali che possano risuonare con il pubblico, senza copiare i competitor. Restituisci solo JSON: {{"suggestions":[{{"title":"", "angle":"", "format":"", "audience_reason":"", "source_urls":[]}}]}}. Contesto audience: {audience_context}. Contenuto Discover: {json.dumps(source,ensure_ascii=False,default=str)}. Evidenze: {json.dumps(evidence,ensure_ascii=False,default=str)}'''
     try:
         proc=subprocess.run([command,"-z",prompt,"--source","tool","--max-turns","20"],capture_output=True,text=True,timeout=timeout,check=True)
@@ -207,8 +209,10 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         frame=pd.DataFrame(source_rows)
         if use_hermes and not frame.empty:
             _,note=refine_with_hermes(source,frame,audience_context,hermes_command); hermes_notes.append({"source_url":source["url"],"result":note})
-        elif use_llm and not frame[frame.url.fillna("").ne("")].empty:
-            note=refine_with_llm(source,frame[frame.url.fillna("").ne("")],audience_context,llm_provider,llm_model); hermes_notes.append({"source_url":source["url"],"result":note})
+        elif use_llm and "url" in frame.columns:
+            real_frame=frame[frame["url"].fillna("").ne("")]
+            if not real_frame.empty:
+                note=refine_with_llm(source,real_frame,audience_context,llm_provider,llm_model); hermes_notes.append({"source_url":source["url"],"result":note})
         rows.extend(source_rows)
     research=pd.DataFrame(rows).reindex(columns=RESULT_COLUMNS)
     if not research.empty:
