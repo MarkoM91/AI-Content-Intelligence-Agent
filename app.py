@@ -68,7 +68,8 @@ def _suggestion_card(item):
     reason=_html.escape(str(item.get("audience_reason","")))
     fmt=_html.escape(str(item.get("recommended_format","") or "")); angle=_html.escape(str(item.get("angle","") or ""))
     dom=_html.escape(str(item.get("competitor_domain","") or "")); url=str(item.get("url","") or "")
-    meta=f'<span>📐 {fmt}</span><span>🎯 {angle}</span>'+ (f'<span>🌐 {dom}</span>' if dom else '')
+    dom_chip=(f'<span style="background:#fee2e2;color:#b91c1c">⭐ {dom}</span>' if item.get("is_benchmark") else f'<span>🌐 {dom}</span>') if dom else ''
+    meta=f'<span>📐 {fmt}</span><span>🎯 {angle}</span>'+dom_chip
     link=f'<a class="src-btn" href="{_html.escape(url)}" target="_blank">Apri fonte ↗</a>' if url else ''
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>{_match_badge(item.get("competitor_match_score",0))}</div>'
             f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')

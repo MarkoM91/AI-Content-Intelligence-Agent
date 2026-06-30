@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; AIContentIntelligence/1.0)"}
 RESULT_COLUMNS = ["source_url","topic","query_used","publisher","title","url","snippet",
-                  "published_date","competitor_domain","competitor_match_score",
+                  "published_date","competitor_domain","is_benchmark","competitor_match_score",
                   "competitor_match_reason","angle","suggested_gap","scraped_title",
                   "scraped_excerpt","scrape_status","article_suggestion","audience_reason",
                   "recommended_format","research_provider"]
@@ -152,8 +152,12 @@ def refine_with_llm(source, candidates, audience_context="", provider="OpenAI", 
     import os
     cols=[c for c in ("title","url","snippet","scraped_excerpt","angle","suggested_gap") if c in candidates.columns]
     evidence=candidates[cols].head(8).to_dict("records")
-    prompt=(f'Agisci come research editor italiano. Parti ESCLUSIVAMENTE dai dati Discover e dalle fonti web fornite. '
-            f'Proponi 3 contenuti originali che risuonino col pubblico, senza copiare i competitor. '
+    philosophy=load_philosophy()
+    prompt=(f'Sei l’editor SEO di una testata news italiana. Filosofia editoriale (vincolante):\n{philosophy}\n\n'
+            f'Parti ESCLUSIVAMENTE dai dati Discover e dalle fonti competitor fornite. '
+            f'Proponi 3 ANGOLI/TITOLI alternativi più forti per battere i competitor diretti sullo stesso fatto del momento. '
+            f'Regole: il titolo è il 70% del gioco (massimizza il CTR senza clickbait ingannevole), formato news breve (4-6 paragrafi), '
+            f'niente keyword stuffing, niente evergreen lungo. In "audience_reason" spiega perché il titolo funziona e cosa aggiunge rispetto al competitor. '
             f'Restituisci solo JSON: {{"suggestions":[{{"title":"","angle":"","format":"","audience_reason":"","source_urls":[]}}]}}. '
             f'Contesto audience: {audience_context}. Contenuto Discover: {json.dumps(source,ensure_ascii=False,default=str)}. '
             f'Evidenze: {json.dumps(evidence,ensure_ascii=False,default=str)}')
@@ -187,10 +191,20 @@ def refine_with_hermes(source, candidates, audience_context="", command="hermes"
         return candidates,_parse_json(proc.stdout)
     except Exception as exc: return candidates,f"Hermes non disponibile, fallback locale: {str(exc)[:220]}"
 
-# Domini competitor italiani per la ricerca mirata site: su Google News.
-CURATED_COMPETITORS=["corriere.it","repubblica.it","ansa.it","ilsole24ore.com","tg24.sky.it",
-    "tgcom24.mediaset.it","today.it","fanpage.it","ilmessaggero.it","lastampa.it",
-    "ilfattoquotidiano.it","adnkronos.com","rainews.it","ilpost.it"]
+# Competitor diretti in SERP secondo la filosofia editoriale (benchmark prioritario).
+BENCHMARK_COMPETITORS=["ansa.it","ilmessaggero.it","ilfattoquotidiano.it","open.online",
+    "fanpage.it","corriere.it","repubblica.it"]
+# Set allargato per la ricerca mirata site: su Google News.
+CURATED_COMPETITORS=BENCHMARK_COMPETITORS+["ilsole24ore.com","tg24.sky.it","tgcom24.mediaset.it",
+    "today.it","lastampa.it","adnkronos.com","rainews.it","ilpost.it"]
+
+def load_philosophy(path="seo_philosophy.md", limit=2600):
+    """Carica la filosofia SEO editoriale come contesto fisso per i prompt LLM."""
+    try:
+        from pathlib import Path
+        return Path(path).read_text(encoding="utf-8")[:limit]
+    except Exception:
+        return ""
 
 # Feed RSS italiani predefiniti, organizzati per verticale.
 DEFAULT_RSS_FEEDS=[
@@ -221,10 +235,12 @@ def llm_plan_research(source, provider="OpenAI", model=""):
     key=os.getenv("ANTHROPIC_API_KEY" if provider=="Anthropic" else "OPENAI_API_KEY")
     if not key: return None
     label=seed_label(source)
-    prompt=(f'Sei un content strategist SEO italiano. Dato un contenuto che funziona su Google Discover, '
-            f'1) classifica il TIPO/FORMATO (es: news, guida how-to, analisi, dati/report, opinione, '
-            f'gossip/intrattenimento, lista/classifica, intervista). '
-            f'2) genera 4 query brevi per cercare su Google News coperture competitor dello STESSO formato sullo stesso tema. '
+    philosophy=load_philosophy()
+    prompt=(f'Sei l’editor SEO di una testata news italiana. Filosofia editoriale (rispettala):\n{philosophy}\n\n'
+            f'Dato un contenuto che funziona su Google Discover, '
+            f'1) classifica il TIPO/FORMATO (news, gossip/viralità, analisi, dati/report, opinione, lista/classifica, intervista). '
+            f'2) genera 4 query brevi e attuali per cercare su Google News come i competitor diretti coprono lo STESSO fatto del momento '
+            f'(privilegia nomi propri, citazioni e fatti del giorno, non query informational generiche). '
             f'Rispondi solo JSON: {{"content_type":"","queries":[]}}. '
             f'Titolo: {label}. URL: {source.get("url","")}. Topic: {source.get("topic","")}. Keyword: {source.get("keywords","")}.')
     try:
@@ -261,7 +277,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         # broad queries (sullo stesso formato) + ricerca mirata site: sui competitor curati
         search_specs=[("broad",q) for q in queries]
         if is_google and topic:
-            search_specs+=[("site",f"site:{d} {topic} when:30d",d) for d in CURATED_COMPETITORS]
+            search_specs+=[("site",f"site:{d} {topic} when:7d",d) for d in CURATED_COMPETITORS]
         if provider=="Piano locale":
             for kind,query,*_ in search_specs:
                 source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider})
@@ -270,7 +286,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                 kind,query=spec[0],spec[1]
                 try:
                     if provider=="RSS personalizzati": return spec,custom_rss_search(feed_urls,query),None
-                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:30d").entries,None
+                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:7d").entries,None
                 except Exception as exc: return spec,[],str(exc)
             with ThreadPoolExecutor(max_workers=8) as pool:
                 fetched=list(pool.map(_fetch,search_specs))
@@ -287,7 +303,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                     angle=infer_angle(title,snippet); score=competitor_match_score(source,title,snippet); gap=suggested_gap_from_angle(angle,source)
                     suggestion,reason,fmt=_recommendation(source,title,angle,gap)
                     publisher=entry.get("source",{}).get("title",domain) if hasattr(entry.get("source",{}),"get") else domain
-                    source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":publisher,"title":title,"url":link,"snippet":snippet,"published_date":entry.get("published",entry.get("updated","")),"competitor_domain":domain,"competitor_match_score":score,"competitor_match_reason":f"Coerenza con tema/keyword Discover: {score}%","angle":angle,"suggested_gap":gap,"scraped_title":"","scraped_excerpt":"","scrape_status":"In attesa","article_suggestion":suggestion,"audience_reason":reason,"recommended_format":fmt,"research_provider":provider})
+                    source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":publisher,"title":title,"url":link,"snippet":snippet,"published_date":entry.get("published",entry.get("updated","")),"competitor_domain":domain,"is_benchmark":any(b in domain for b in BENCHMARK_COMPETITORS),"competitor_match_score":score,"competitor_match_reason":f"Coerenza con tema/keyword Discover: {score}%","angle":angle,"suggested_gap":gap,"scraped_title":"","scraped_excerpt":"","scrape_status":"In attesa","article_suggestion":suggestion,"audience_reason":reason,"recommended_format":fmt,"research_provider":provider})
         real=[row for row in source_rows if row.get("url")]
         with ThreadPoolExecutor(max_workers=5) as pool:
             futures={pool.submit(scrape_article,row["url"]):row for row in real[:16]}
@@ -296,6 +312,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
             resolved=urlparse(row.get("resolved_url","") or "").netloc.lower().removeprefix("www.")
             if resolved and "google." not in resolved:
                 row["competitor_domain"]=resolved
+                row["is_benchmark"]=any(b in resolved for b in BENCHMARK_COMPETITORS)
                 if not row.get("publisher") or "google" in str(row.get("publisher","")).lower(): row["publisher"]=resolved
         if real:
             src_text=f'{source.get("topic","")} {source.get("keywords","")} {source.get("title","")} {source.get("h1","")}'

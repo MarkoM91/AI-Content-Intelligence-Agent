@@ -3,9 +3,16 @@ from .agents import local_brief
 def _parse(text):
     clean=re.sub(r"^```(?:json)?|```$","",text.strip(),flags=re.I|re.M).strip(); match=re.search(r"\{.*\}",clean,re.S)
     return json.loads(match.group(0) if match else clean)
+def _philosophy():
+    try:
+        from .fresh_research import load_philosophy
+        return load_philosophy()
+    except Exception: return ""
+
 def _prompt(row,context,goal):
     keys=["url","title","clicks_current","impressions_current","ctr_current","growth_pct","status","opportunity_score","topic","keywords","h1","meta_description","paragraph_context","fresh_research_summary","competitor_domains_found","fresh_angles"]
-    return f'''Sei un content strategist. Crea un brief in italiano, solo JSON valido, con chiavi: titolo_consigliato, angolo, target, formato_suggerito, cta, outline (array), query_ricerca, angoli_mancanti, perche_funziona, rischi_note, azioni_consigliate (array).\nContesto: {context}\nObiettivo: {goal}\nDati: {json.dumps({k:row.get(k,"") for k in keys},ensure_ascii=False,default=str)}'''
+    philosophy=_philosophy()
+    return f'''Sei l'editor SEO di una testata news italiana. Filosofia editoriale (vincolante):\n{philosophy}\n\nCrea un brief in italiano, solo JSON valido, con chiavi: titolo_consigliato, angolo, target, formato_suggerito, cta, outline (array), query_ricerca, angoli_mancanti, perche_funziona, rischi_note, azioni_consigliate (array). Priorità: titolo ad alto CTR senza clickbait ingannevole, formato news breve (4-6 paragrafi), freschezza.\nContesto: {context}\nObiettivo: {goal}\nDati: {json.dumps({k:row.get(k,"") for k in keys},ensure_ascii=False,default=str)}'''
 def generate_brief(row,mode="Regole locali",provider="OpenAI",model="",client_context="",goal="Crescita organica"):
     if mode=="Regole locali": return local_brief(row,client_context,goal),None
     try:
