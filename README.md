@@ -1,5 +1,6 @@
 # AI Content Intelligence Agent per Agenzie Digitali
 
+
 Portfolio project Streamlit in italiano: un workflow controllato, non un semplice chatbot. Parte da GSC/Discover, identifica opportunità, arricchisce le pagine, cerca coperture competitor coerenti con temi già validati, produce brief e ferma le azioni esterne in una coda di approvazione.
 
 ## Avvio
@@ -72,3 +73,15 @@ python main.py --config multi_site.yaml --site "Affaritaliani"
 ```
 
 `--dry-run` evita la scrittura su Google Sheets ma produce comunque i CSV in `outputs/`. La chiave Serper può essere impostata nel file privato oppure nella variabile d'ambiente `SERPER_API_KEY`; senza chiave restano attivi Google News RSS e Reddit.
+
+## Export pageview ed engagement
+
+La modalità **Export engagement CSV (7 giorni)** accetta file con URL, pageview, tempo totale, tempo medio per view e un flag opzionale. L'app riconosce le intestazioni comuni oppure usa l'ordine delle prime cinque colonne.
+
+L'analisi mantiene distinti tre segnali:
+
+- traffico, per individuare i contenuti che generano volume;
+- permanenza media, per trovare nicchie con lettori realmente coinvolti;
+- engagement totale, per bilanciare scala e qualità.
+
+Gli articoli vengono classificati come headliner, nicchie ad alta fedeltà, contenuti ad alto traffico ma retention debole o cadence filler. I filoni editoriali ricorrenti vengono aggregati e possono diventare direttamente i seed della ricerca competitor tramite **Top per engagement totale**, **Alta permanenza** o **Filoni ricorrenti**.

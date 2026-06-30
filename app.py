@@ -11,6 +11,8 @@ from src.llm import generate_brief
 from src.agents import propose_actions
 from src.reporting import generate_markdown_report, generate_json_export
 from src.storage import save_snapshot, load_snapshot
+from src.csv_loader import read_csv
+from src.engagement import analyze_engagement_export, summarize_editorial_themes
 
 load_dotenv()
 import os
@@ -84,8 +86,12 @@ def _show_table(df):
             d[c]=pd.to_numeric(d[c],errors="coerce")*100; cfg[c]=st.column_config.NumberColumn("CTR %",format="%.2f%%")
     if "url" in d.columns: cfg["url"]=st.column_config.LinkColumn("URL",display_text=r"https?://(?:www\.)?([^/]+/.{0,32})")
     if "opportunity_score" in d.columns: cfg["opportunity_score"]=st.column_config.ProgressColumn("Opportunità",min_value=0,max_value=100,format="%.0f")
+    if "engagement_score" in d.columns: cfg["engagement_score"]=st.column_config.ProgressColumn("Engagement",min_value=0,max_value=100,format="%.0f")
+    if "theme_score" in d.columns: cfg["theme_score"]=st.column_config.ProgressColumn("Forza filone",min_value=0,max_value=100,format="%.0f")
     if "competitor_match_score" in d.columns: cfg["competitor_match_score"]=st.column_config.ProgressColumn("Match",min_value=0,max_value=100,format="%.0f")
     for c,(lbl,fmt) in {"clicks":("Click","%d"),"clicks_current":("Click","%d"),"impressions":("Impression","%d"),"impressions_current":("Impression","%d"),"growth_pct":("Crescita %","%.0f%%"),"position":("Posizione","%.1f")}.items():
+        if c in d.columns: cfg[c]=st.column_config.NumberColumn(lbl,format=fmt)
+    for c,(lbl,fmt) in {"pageviews":("Pageview","%d"),"avg_time_seconds":("Tempo medio","%.1fs"),"total_time_seconds":("Engagement totale","%.0fs")}.items():
         if c in d.columns: cfg[c]=st.column_config.NumberColumn(lbl,format=fmt)
     st.dataframe(d,use_container_width=True,column_config=cfg,hide_index=True)
 
@@ -108,12 +114,14 @@ with st.sidebar:
     context=st.text_area("Target, mercato e tono","Editore italiano; tono autorevole, chiaro e verificabile.")
     goal=st.text_input("Obiettivo","Crescita organica e opportunità editoriali")
     st.header("Dati")
-    input_mode=st.radio("Modalità",["Google Search Console API","Demo CSV"])
+    input_mode=st.radio("Modalità",["Google Search Console API","Export engagement CSV (7 giorni)","Demo CSV"])
     st.header("Crawler pagine")
     max_crawl=st.slider("URL da analizzare",1,20,5); delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
     st.header("Ricerca competitor/fresca")
     research_provider=st.selectbox("Provider",["AI (LLM) + Web scraper","Serper + Google News","Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"],help="AI (LLM) raffina le evidenze con OpenAI/Anthropic e usa il match semantico via embeddings; richiede una API key in .env, altrimenti torna automaticamente alle euristiche locali.")
-    seed_strategy=st.selectbox("Contenuti da analizzare",["Top per click (cosa funziona)","Migliori per opportunità","In crescita"],help="Da quali contenuti Discover partire per cercare coperture competitor simili.")
+    engagement_loaded=st.session_state.analyzed is not None and "pageviews" in st.session_state.analyzed
+    seed_options=(["Top per engagement totale","Alta permanenza","Filoni ricorrenti"] if engagement_loaded else [])+["Top per click (cosa funziona)","Migliori per opportunità","In crescita"]
+    seed_strategy=st.selectbox("Contenuti da analizzare",seed_options,help="Scegli il segnale editoriale da usare come base per la ricerca competitor.")
     freshness_label=st.selectbox("Freschezza fonti",["Ultime 24h","Ultimi 7 giorni","Ultimi 30 giorni"],index=1,help="Finestra temporale della ricerca web competitor. 24h = solo contenuti pubblicati oggi/ieri (notizia del momento).")
     freshness={"Ultime 24h":"1d","Ultimi 7 giorni":"7d","Ultimi 30 giorni":"30d"}[freshness_label]
     include_reddit=st.checkbox("Includi Reddit (best-effort)",value=False,help="Aggiunge articoli linkati su Reddit. Gratuito, ma Reddit blocca spesso gli IP server: se non risponde viene ignorato senza errori.")
@@ -135,6 +143,22 @@ with tabs[0]:
         if st.button("Carica e analizza demo",type="primary"):
             st.session_state.short_df=pd.read_csv("sample_short_3d.csv"); st.session_state.long_df=pd.read_csv("sample_long_7d.csv")
             st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,3,7); st.session_state.mode_label=input_mode
+    elif input_mode=="Export engagement CSV (7 giorni)":
+        st.info("Carica un CSV con URL, pageview, tempo totale, tempo medio per view e flag. I nomi colonna comuni e gli export generici a 5 colonne vengono riconosciuti automaticamente.")
+        engagement_upload=st.file_uploader("CSV pageview / engagement",type=["csv"],key="engagement_csv")
+        if st.button("Analizza traffico ed engagement",type="primary",disabled=engagement_upload is None):
+            try:
+                raw_engagement=read_csv(engagement_upload)
+                analyzed_engagement=analyze_engagement_export(raw_engagement)
+                if analyzed_engagement.empty: st.warning("Il file non contiene URL analizzabili.")
+                else:
+                    st.session_state.short_df=raw_engagement
+                    st.session_state.long_df=None
+                    st.session_state.analyzed=analyzed_engagement
+                    st.session_state.mode_label=input_mode
+                    st.session_state.research_df=None
+                    st.success(f"Analizzati {len(analyzed_engagement)} articoli. Ora puoi usare questi segnali nella ricerca competitor.")
+            except Exception as exc: st.error(f"Impossibile leggere l'export engagement: {exc}")
     else:
         cfg="gsc_config.yaml"
         range_days=st.number_input("Periodo Discover corrente (giorni)",min_value=7,max_value=480,value=90,step=1,help="Confrontato con il periodo precedente della stessa durata.")
@@ -172,7 +196,23 @@ with tabs[1]:
     analyzed=st.session_state.analyzed
     if analyzed is None: st.info("Carica o genera i dati nella scheda Dati.")
     else:
-        c1,c2,c3=st.columns(3); c1.metric("URL",len(analyzed)); c2.metric("Impression correnti",int(analyzed.impressions_current.sum())); c3.metric("Click correnti",int(analyzed.clicks_current.sum()))
+        if "pageviews" in analyzed:
+            c1,c2,c3,c4=st.columns(4)
+            c1.metric("Articoli",len(analyzed)); c2.metric("Pageview",f"{int(analyzed.pageviews.sum()):,}")
+            c3.metric("Tempo medio / view",f"{analyzed.avg_time_seconds.mean():.1f}s")
+            c4.metric("Engagement totale",f"{int(analyzed.total_time_seconds.sum()/3600):,}h")
+            st.subheader("Segnali editoriali")
+            themes=summarize_editorial_themes(analyzed)
+            if not themes.empty: _show_table(themes)
+            left,right=st.columns(2)
+            with left:
+                st.markdown("**Traffico più alto**")
+                _show_table(analyzed.sort_values("pageviews",ascending=False)[["title","url","pageviews","avg_time_seconds","editorial_signal"]].head(10))
+            with right:
+                st.markdown("**Permanenza più alta**")
+                _show_table(analyzed.sort_values("avg_time_seconds",ascending=False)[["title","url","pageviews","avg_time_seconds","editorial_signal"]].head(10))
+        else:
+            c1,c2,c3=st.columns(3); c1.metric("URL",len(analyzed)); c2.metric("Impression correnti",int(analyzed.impressions_current.sum())); c3.metric("Click correnti",int(analyzed.clicks_current.sum()))
         _show_table(analyzed)
         if st.button("Avvia crawler sulle URL principali"):
             with st.spinner("Crawler in esecuzione..."):
@@ -188,7 +228,8 @@ with tabs[2]:
         use_llm=provider=="AI (LLM) + Web scraper"
         use_serper=provider=="Serper + Google News"
         if provider in ("Hermes Agent + Web scraper","AI (LLM) + Web scraper","Google News RSS","Serper + Google News"): provider="Web scraper + Google News"
-        st.caption(f"Base: «{seed_strategy}» sui tuoi dati Discover · Freschezza fonti: {freshness_label}. Per ogni contenuto trova coperture competitor simili, estrae il testo e propone contenuti originali.")
+        signal_source="pageview ed engagement" if "pageviews" in st.session_state.analyzed else "Google Discover"
+        st.caption(f"Base: «{seed_strategy}» sui dati {signal_source} · Freschezza fonti: {freshness_label}. Per ogni contenuto trova coperture competitor simili, estrae il testo e propone contenuti originali.")
         if use_llm:
             st.success("Modalità AI: match semantico via embeddings e raffinamento LLM; senza API key il sistema usa euristiche e scoring locali.")
         if use_hermes:
@@ -204,7 +245,7 @@ with tabs[2]:
             real=research[research.url.fillna("").ne("")] if "url" in research else research
             c1,c2,c3=st.columns(3)
             c1.metric("Fonti reali",len(real)); c2.metric("Domini",real.competitor_domain.replace("",pd.NA).dropna().nunique() if "competitor_domain" in real else 0); c3.metric("Pagine estratte",real.scrape_status.fillna("").str.startswith("OK").sum() if "scrape_status" in real else 0)
-            st.subheader("💡 Suggerimenti editoriali dai tuoi contenuti Discover che funzionano")
+            st.subheader(f"💡 Suggerimenti editoriali guidati dai segnali {signal_source}")
             relevant=real[real.competitor_match_score.fillna(0)>=min_match] if "competitor_match_score" in real else real
             suggestions=relevant.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
             if suggestions.empty:

@@ -284,6 +284,13 @@ def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     """Sceglie i contenuti Discover da usare come base per la ricerca competitor.
     'cosa funziona' = top per click; altrimenti per opportunità o crescita."""
     d=analyzed.copy()
+    if strategy=="Top per engagement totale" and "total_time_seconds" in d:
+        return d.sort_values("total_time_seconds",ascending=False).head(limit)
+    if strategy=="Alta permanenza" and "avg_time_seconds" in d:
+        return d.sort_values(["avg_time_seconds","pageviews"],ascending=False).head(limit)
+    if strategy=="Filoni ricorrenti" and "editorial_theme" in d:
+        ranked=d.groupby("editorial_theme")["engagement_score"].transform("mean")
+        return d.assign(_theme_rank=ranked).sort_values(["_theme_rank","engagement_score"],ascending=False).drop_duplicates("editorial_theme").head(limit).drop(columns="_theme_rank")
     if strategy=="Top per click (cosa funziona)" and "clicks_current" in d:
         return d.sort_values("clicks_current",ascending=False).head(limit)
     if strategy=="In crescita" and "growth_pct" in d:
