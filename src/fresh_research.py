@@ -223,6 +223,11 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         with ThreadPoolExecutor(max_workers=5) as pool:
             futures={pool.submit(scrape_article,row["url"]):row for row in real[:12]}
             for future in as_completed(futures): futures[future].update(future.result())
+        for row in real:
+            resolved=urlparse(row.get("resolved_url","") or "").netloc.lower().removeprefix("www.")
+            if resolved and "google." not in resolved:
+                row["competitor_domain"]=resolved
+                if not row.get("publisher") or "google" in str(row.get("publisher","")).lower(): row["publisher"]=resolved
         if real:
             src_text=f'{source.get("topic","")} {source.get("keywords","")} {source.get("title","")} {source.get("h1","")}'
             sem=semantic_match_scores(src_text,[f'{r.get("title","")} {r.get("scraped_excerpt") or r.get("snippet","")}' for r in real])
