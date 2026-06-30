@@ -6,7 +6,7 @@ gsc:
   dimension: "page"
   row_limit: 250
 windows:
-  short_days: 3
-  long_days: 7
+  current_days: 90
+  baseline_days: 90
 output:
   dir: "./gsc_exports"

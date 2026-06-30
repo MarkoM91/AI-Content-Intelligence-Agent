@@ -25,6 +25,8 @@ I dati restano in `st.session_state`: cambiare da Regole locali ad AI con LLM no
 
 Ogni import GSC riuscito viene inoltre archiviato in `data/content_intelligence.db`. Dalla scheda **Dati → Archivio dati locale** è possibile ripristinare uno snapshot senza interrogare nuovamente Google. Il token OAuth viene salvato nel percorso privato indicato da `token_path`, così l'autorizzazione viene riutilizzata. La cartella `data/`, i database e i token non vengono versionati.
 
+L'import Discover usa per impostazione predefinita gli ultimi **90 giorni completi disponibili** e li confronta con i 90 giorni immediatamente precedenti. La durata è modificabile nell'interfaccia da 7 a 480 giorni.
+
 Nota deployment: il filesystem di Streamlit Community Cloud è effimero. Per persistenza durevole in cloud, sostituire il backend SQLite con un database gestito (per esempio PostgreSQL/Supabase); SQLite è pensato per la demo locale.
 
 ### GSC su Streamlit Community Cloud

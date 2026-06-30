@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -57,6 +58,7 @@ with tabs[0]:
             st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
     else:
         cfg=st.text_input("File configurazione","gsc_config.yaml")
+        range_days=st.number_input("Periodo Discover corrente (giorni)",min_value=7,max_value=480,value=90,step=1,help="Confrontato con il periodo precedente della stessa durata.")
         local_config_exists=Path(cfg).exists()
         cloud_secrets_ready=False
         if not local_config_exists:
@@ -69,17 +71,20 @@ with tabs[0]:
             try:
                 from src.gsc_api import load_config,fetch_gsc,get_credentials
                 if local_config_exists:
-                    conf=load_config(cfg); sd=conf.get("windows",{}).get("short_days",3); ld=conf.get("windows",{}).get("long_days",7)
+                    conf=load_config(cfg)
                 else:
                     gsc_secret=dict(st.secrets["gsc"]); oauth_secret=dict(st.secrets["google_oauth"])
-                    sd=int(gsc_secret.pop("short_days",3)); ld=int(gsc_secret.pop("long_days",7)); gsc_secret["authorized_user_info"]=oauth_secret
-                    conf={"gsc":gsc_secret,"windows":{"short_days":sd,"long_days":ld}}
+                    gsc_secret.pop("short_days",None); gsc_secret.pop("long_days",None); gsc_secret.pop("range_days",None); gsc_secret["authorized_user_info"]=oauth_secret
+                    conf={"gsc":gsc_secret}
                 credentials=get_credentials(conf)
-                short,info1=fetch_gsc(conf,sd,credentials=credentials); long,info2=fetch_gsc(conf,ld,credentials=credentials)
+                current_days=int(range_days)
+                short,info1=fetch_gsc(conf,current_days,credentials=credentials)
+                baseline_end=date.fromisoformat(info1["start"])-timedelta(days=1)
+                long,info2=fetch_gsc(conf,current_days,end_date=baseline_end,credentials=credentials)
                 if short.empty: st.warning("GSC non ha restituito righe per il periodo selezionato.")
                 else:
-                    st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"short":info1,"long":info2}; st.session_state.analyzed=analyze_comparison(short,long,sd,ld)
-                    snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {info1['start']} → {info1['end']}",st.session_state.gsc_info)
+                    st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"current":info1,"baseline":info2}; st.session_state.analyzed=analyze_comparison(short,long,current_days,current_days)
+                    snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {current_days}g {info1['start']} → {info1['end']}",st.session_state.gsc_info)
                     st.success(f"Dati salvati nell’archivio locale (snapshot #{snapshot_id}).")
             except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
     st.subheader("Archivio dati locale")
