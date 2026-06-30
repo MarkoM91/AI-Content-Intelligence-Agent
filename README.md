@@ -27,6 +27,10 @@ Ogni import GSC riuscito viene inoltre archiviato in `data/content_intelligence.
 
 Nota deployment: il filesystem di Streamlit Community Cloud è effimero. Per persistenza durevole in cloud, sostituire il backend SQLite con un database gestito (per esempio PostgreSQL/Supabase); SQLite è pensato per la demo locale.
 
+### GSC su Streamlit Community Cloud
+
+Il cloud non può leggere `gsc_config.yaml` o i file OAuth del computer locale. Copiare la struttura di `.streamlit/secrets.toml.example` in **Manage app → Settings → Secrets**, usando i valori del token OAuth locale autorizzato. L'app rileva automaticamente `[gsc]` e `[google_oauth]` e usa il refresh token senza avviare un browser OAuth sul server. Non inserire mai questi valori nel repository.
+
 ## Google Search Console
 
 Copiare `gsc_config.example.yaml` in `gsc_config.yaml` e indicare proprietà e credenziali OAuth Desktop App. Per Discover viene inviato `type: discover`; per Search `type: web`, senza filtro `searchAppearance`. Non versionare le credenziali.

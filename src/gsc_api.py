@@ -9,7 +9,13 @@ def get_credentials(config):
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
-    g=config["gsc"]; credentials_path=Path(g["credentials_path"])
+    g=config["gsc"]
+    if g.get("authorized_user_info"):
+        info=g["authorized_user_info"]
+        creds=Credentials(token=None,refresh_token=info["refresh_token"],token_uri=info.get("token_uri","https://oauth2.googleapis.com/token"),client_id=info["client_id"],client_secret=info["client_secret"],scopes=SCOPES)
+        creds.refresh(Request())
+        return creds
+    credentials_path=Path(g["credentials_path"])
     token_path=Path(g.get("token_path") or credentials_path.with_name("gsc-token.json"))
     creds=Credentials.from_authorized_user_file(token_path,SCOPES) if token_path.exists() else None
     if creds and creds.expired and creds.refresh_token: creds.refresh(Request())

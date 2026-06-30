@@ -6,3 +6,4 @@ gsc_config.yaml
 gsc_exports/
 data/
 *.db
+.streamlit/secrets.toml

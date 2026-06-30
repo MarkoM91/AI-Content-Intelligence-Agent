@@ -57,11 +57,23 @@ with tabs[0]:
             st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
     else:
         cfg=st.text_input("File configurazione","gsc_config.yaml")
-        st.info("I download GSC riusciti vengono salvati nell’archivio locale. Il token OAuth viene riutilizzato automaticamente.")
-        if st.button("Scarica da GSC",type="primary"):
+        local_config_exists=Path(cfg).exists()
+        cloud_secrets_ready=False
+        if not local_config_exists:
+            try: cloud_secrets_ready="gsc" in st.secrets and "google_oauth" in st.secrets
+            except Exception: cloud_secrets_ready=False
+        if local_config_exists: st.info("Configurazione locale rilevata. Il token OAuth verrà riutilizzato automaticamente.")
+        elif cloud_secrets_ready: st.success("Configurazione GSC caricata in modo sicuro da Streamlit Secrets.")
+        else: st.warning("Configurazione GSC assente. In Streamlit Cloud aggiungi le sezioni [gsc] e [google_oauth] nei Secrets dell’app; non caricare credenziali su GitHub.")
+        if st.button("Scarica da GSC",type="primary",disabled=not local_config_exists and not cloud_secrets_ready):
             try:
                 from src.gsc_api import load_config,fetch_gsc,get_credentials
-                conf=load_config(cfg); sd=conf.get("windows",{}).get("short_days",3); ld=conf.get("windows",{}).get("long_days",7)
+                if local_config_exists:
+                    conf=load_config(cfg); sd=conf.get("windows",{}).get("short_days",3); ld=conf.get("windows",{}).get("long_days",7)
+                else:
+                    gsc_secret=dict(st.secrets["gsc"]); oauth_secret=dict(st.secrets["google_oauth"])
+                    sd=int(gsc_secret.pop("short_days",3)); ld=int(gsc_secret.pop("long_days",7)); gsc_secret["authorized_user_info"]=oauth_secret
+                    conf={"gsc":gsc_secret,"windows":{"short_days":sd,"long_days":ld}}
                 credentials=get_credentials(conf)
                 short,info1=fetch_gsc(conf,sd,credentials=credentials); long,info2=fetch_gsc(conf,ld,credentials=credentials)
                 if short.empty: st.warning("GSC non ha restituito righe per il periodo selezionato.")
