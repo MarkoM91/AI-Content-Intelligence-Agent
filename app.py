@@ -19,8 +19,51 @@ for _secret_key in ("OPENAI_API_KEY","ANTHROPIC_API_KEY"):
         if not os.getenv(_secret_key) and _secret_key in st.secrets: os.environ[_secret_key]=str(st.secrets[_secret_key])
     except Exception: pass
 st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
-st.title("AI Content Intelligence Agent")
-st.caption("GSC/Discover → scoring → crawler → competitor research → brief → approvazione umana → report")
+
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"]{font-family:'Inter',sans-serif;}
+.block-container{padding-top:1.6rem;}
+.hero{background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 55%,#ec4899 100%);border-radius:18px;padding:26px 30px;color:#fff;margin-bottom:14px;box-shadow:0 10px 30px rgba(99,102,241,.25);}
+.hero h1{margin:0;font-size:1.85rem;font-weight:800;letter-spacing:-.5px;}
+.hero p{margin:.4rem 0 0;opacity:.92;font-size:.95rem;}
+.hero .pipe span{background:rgba(255,255,255,.18);padding:3px 11px;border-radius:999px;font-size:.76rem;margin:10px 6px 0 0;display:inline-block;}
+[data-testid="stMetric"]{background:#fff;border:1px solid #ececf3;border-radius:14px;padding:14px 18px;box-shadow:0 2px 8px rgba(16,24,40,.04);}
+[data-testid="stMetricValue"]{font-weight:700;color:#4f46e5;}
+button[data-baseweb="tab"]{font-weight:600;font-size:.95rem;}
+.sugg-card{background:#fff;border:1px solid #ececf3;border-left:4px solid #6366f1;border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(16,24,40,.05);}
+.sugg-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.sugg-head h4{margin:0;font-size:1.06rem;font-weight:700;color:#1e1b4b;line-height:1.35;}
+.sugg-reason{color:#475467;font-size:.91rem;margin:.55rem 0 .75rem;line-height:1.5;}
+.sugg-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.sugg-meta span{background:#f4f4fb;color:#5b21b6;padding:3px 10px;border-radius:8px;font-size:.77rem;font-weight:500;}
+.badge{padding:3px 11px;border-radius:999px;font-weight:700;font-size:.78rem;white-space:nowrap;}
+.src-btn{margin-left:auto;background:#6366f1;color:#fff!important;text-decoration:none;padding:6px 15px;border-radius:8px;font-size:.81rem;font-weight:600;}
+.src-btn:hover{background:#4f46e5;}
+</style>""",unsafe_allow_html=True)
+
+st.markdown("""<div class="hero">
+<h1>🧭 AI Content Intelligence Agent</h1>
+<p>Da Google Discover ai contenuti vincenti: analisi delle performance, ricerca competitor semantica e brief con human-in-the-loop.</p>
+<div class="pipe"><span>GSC / Discover</span><span>Scoring</span><span>Crawler</span><span>Competitor research</span><span>Brief AI</span><span>Approvazione umana</span><span>Report</span></div>
+</div>""",unsafe_allow_html=True)
+
+import html as _html
+def _match_badge(score):
+    s=float(score or 0)
+    if s<=0: return ""
+    color="#16a34a" if s>=60 else "#d97706" if s>=35 else "#dc2626"
+    return f'<span class="badge" style="background:{color}1a;color:{color}">Match {s:.0f}</span>'
+
+def _suggestion_card(item):
+    title=_html.escape(str(item.get("article_suggestion","Idea da sviluppare")))
+    reason=_html.escape(str(item.get("audience_reason","")))
+    fmt=_html.escape(str(item.get("recommended_format","") or "")); angle=_html.escape(str(item.get("angle","") or ""))
+    dom=_html.escape(str(item.get("competitor_domain","") or "")); url=str(item.get("url","") or "")
+    meta=f'<span>📐 {fmt}</span><span>🎯 {angle}</span>'+ (f'<span>🌐 {dom}</span>' if dom else '')
+    link=f'<a class="src-btn" href="{_html.escape(url)}" target="_blank">Apri fonte ↗</a>' if url else ''
+    return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>{_match_badge(item.get("competitor_match_score",0))}</div>'
+            f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')
 
 DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"briefs":[],"approvals":[],"hermes_notes":[],"mode_label":"Demo CSV"}
 for k,v in DEFAULTS.items():
@@ -57,7 +100,7 @@ with st.sidebar:
     llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
     model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
 
-tabs=st.tabs(["1. Dati","2. Analisi + crawler","3. Competitor research","4. Brief e approvazioni","5. Report"])
+tabs=st.tabs(["📥 Dati","📊 Analisi + crawler","🔍 Competitor research","📝 Brief e approvazioni","📤 Report"])
 with tabs[0]:
     st.subheader("Acquisizione dati")
     if input_mode=="Demo CSV":
@@ -133,29 +176,23 @@ with tabs[2]:
             real=research[research.url.fillna("").ne("")] if "url" in research else research
             c1,c2,c3=st.columns(3)
             c1.metric("Fonti reali",len(real)); c2.metric("Domini",real.competitor_domain.replace("",pd.NA).dropna().nunique() if "competitor_domain" in real else 0); c3.metric("Pagine estratte",real.scrape_status.fillna("").str.startswith("OK").sum() if "scrape_status" in real else 0)
-            st.subheader("Suggerimenti editoriali dai tuoi contenuti Discover che funzionano")
+            st.subheader("💡 Suggerimenti editoriali dai tuoi contenuti Discover che funzionano")
             relevant=real[real.competitor_match_score.fillna(0)>=min_match] if "competitor_match_score" in real else real
             suggestions=relevant.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
             if suggestions.empty:
                 st.info(f"Nessuna fonte competitor sopra la soglia di pertinenza ({min_match}%). Abbassa la soglia nella sidebar o riprova la ricerca.")
             for _,item in suggestions.iterrows():
-                with st.container(border=True):
-                    st.markdown(f"#### {item.get('article_suggestion','Idea da sviluppare')}")
-                    st.write(item.get("audience_reason",""))
-                    st.caption(f"Formato: {item.get('recommended_format','')} · Angolo competitor: {item.get('angle','')} · Match: {item.get('competitor_match_score',0)}")
-                    if item.get("url"): st.link_button("Apri fonte",item["url"])
+                st.markdown(_suggestion_card(item),unsafe_allow_html=True)
             with st.expander("Evidenze e dati tecnici"):
                 st.dataframe(research,use_container_width=True)
             for note in st.session_state.hermes_notes:
                 result=note.get("result")
                 if isinstance(result,str): st.info(result)
                 elif isinstance(result,dict) and result.get("suggestions"):
-                    st.subheader("Raccomandazioni AI (LLM / Hermes)")
+                    st.subheader("🤖 Raccomandazioni AI (LLM / Hermes)")
                     for suggestion in result["suggestions"]:
-                        with st.container(border=True):
-                            st.markdown(f"#### {suggestion.get('title','Idea Hermes')}")
-                            st.write(suggestion.get("audience_reason",""))
-                            st.caption(f"Formato: {suggestion.get('format','')} · Angolo: {suggestion.get('angle','')}")
+                        urls=suggestion.get("source_urls") or []
+                        st.markdown(_suggestion_card({"article_suggestion":suggestion.get("title","Idea AI"),"audience_reason":suggestion.get("audience_reason",""),"recommended_format":suggestion.get("format",""),"angle":suggestion.get("angle",""),"url":urls[0] if isinstance(urls,list) and urls else "","competitor_match_score":0}),unsafe_allow_html=True)
 
 with tabs[3]:
     if st.session_state.analyzed is None: st.info("Prima esegui l’analisi.")
