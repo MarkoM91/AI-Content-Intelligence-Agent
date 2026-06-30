@@ -40,6 +40,18 @@ def build_queries(row):
     queries = [seed, f'"{topic}" novità', f'{topic} analisi guida']
     return [q for q in dict.fromkeys(queries) if q.strip()][:3]
 
+def canonical_url(url):
+    """Normalizza per deduplica: rimuove schema/www, query di tracking, slash finale."""
+    from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit
+    try:
+        parts=urlsplit(str(url))
+        netloc=parts.netloc.lower().removeprefix("www.")
+        query=urlencode([(k,v) for k,v in parse_qsl(parts.query) if not k.lower().startswith(("utm_","fbclid","gclid","ref"))])
+        path=parts.path.rstrip("/")
+        return urlunsplit(("",netloc,path,query,"")).strip("/").lower()
+    except Exception:
+        return str(url).lower()
+
 def infer_angle(title, snippet=""):
     text=f"{title} {snippet}".lower()
     if any(x in text for x in ("come ","guida","consigli","passaggi")): return "guida/how-to"
@@ -57,6 +69,31 @@ def competitor_match_score(row, title, snippet=""):
     target=_terms(f"{title} {snippet}")
     overlap=len(source & target)/max(len(source),1)
     return round(min(100, overlap*120),1)
+
+def _embed(texts, model="text-embedding-3-small"):
+    import os
+    key=os.getenv("OPENAI_API_KEY")
+    if not key: return None
+    from openai import OpenAI
+    clean=[(t or "").strip()[:1500] or " " for t in texts]
+    data=OpenAI(api_key=key).embeddings.create(model=model,input=clean).data
+    return [d.embedding for d in data]
+
+def semantic_match_scores(source_text, candidate_texts):
+    """Cosine similarity Discover-topic vs candidati in una sola chiamata embeddings.
+    Ritorna None se non c'è API key, così il chiamante usa il fallback euristico."""
+    if not candidate_texts: return []
+    try:
+        vectors=_embed([source_text]+list(candidate_texts))
+    except Exception:
+        vectors=None
+    if not vectors: return None
+    src=vectors[0]; norm_s=sum(v*v for v in src)**0.5 or 1.0
+    scores=[]
+    for vec in vectors[1:]:
+        dot=sum(a*b for a,b in zip(src,vec)); norm_v=sum(v*v for v in vec)**0.5 or 1.0
+        scores.append(round(max(0,min(100,dot/(norm_s*norm_v)*100)),1))
+    return scores
 
 def suggested_gap_from_angle(angle, row):
     return {"news update":"Timeline + conseguenze pratiche + FAQ",
@@ -96,6 +133,30 @@ def _recommendation(source, external_title, angle, gap):
             f"la proposta conserva il tema validato ma aggiunge {gap.lower()}.")
     return suggestion,reason,formats.get(angle,"Approfondimento")
 
+def refine_with_llm(source, candidates, audience_context="", provider="OpenAI", model=""):
+    """Raffina le evidenze in 3 contenuti originali via OpenAI/Anthropic.
+    Default consigliato: funziona ovunque con una API key, niente binari esterni.
+    Ritorna dict {"suggestions":[...]} oppure una stringa di fallback."""
+    import os
+    evidence=candidates[["title","url","snippet","scraped_excerpt","angle","suggested_gap"]].head(8).to_dict("records")
+    prompt=(f'Agisci come research editor italiano. Parti ESCLUSIVAMENTE dai dati Discover e dalle fonti web fornite. '
+            f'Proponi 3 contenuti originali che risuonino col pubblico, senza copiare i competitor. '
+            f'Restituisci solo JSON: {{"suggestions":[{{"title":"","angle":"","format":"","audience_reason":"","source_urls":[]}}]}}. '
+            f'Contesto audience: {audience_context}. Contenuto Discover: {json.dumps(source,ensure_ascii=False,default=str)}. '
+            f'Evidenze: {json.dumps(evidence,ensure_ascii=False,default=str)}')
+    try:
+        if provider=="Anthropic":
+            from anthropic import Anthropic
+            key=os.getenv("ANTHROPIC_API_KEY"); assert key,"ANTHROPIC_API_KEY mancante"
+            text=Anthropic(api_key=key).messages.create(model=model or "claude-3-5-sonnet-latest",max_tokens=1500,messages=[{"role":"user","content":prompt}]).content[0].text
+        else:
+            from openai import OpenAI
+            key=os.getenv("OPENAI_API_KEY"); assert key,"OPENAI_API_KEY mancante"
+            text=OpenAI(api_key=key).chat.completions.create(model=model or "gpt-4o-mini",messages=[{"role":"user","content":prompt}],response_format={"type":"json_object"}).choices[0].message.content
+        return _parse_json(text)
+    except Exception as exc:
+        return f"Raffinamento LLM non disponibile, uso i suggerimenti deterministici: {str(exc)[:200]}"
+
 def hermes_available(command="hermes"):
     return bool(shutil.which(command))
 
@@ -112,7 +173,7 @@ def refine_with_hermes(source, candidates, audience_context="", command="hermes"
         return candidates,_parse_json(proc.stdout)
     except Exception as exc: return candidates,f"Hermes non disponibile, fallback locale: {str(exc)[:220]}"
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes"):
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model=""):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
     for _,source_series in out.head(max_topics).iterrows():
         source=source_series.to_dict(); seen=set(); source_rows=[]
@@ -122,9 +183,9 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
             try:
                 entries=custom_rss_search(feed_urls,query) if provider=="RSS personalizzati" else google_news_rss_search(query).entries
                 for entry in entries[:8]:
-                    link=entry.get("link",""); title=entry.get("title",""); unique=re.sub(r"\W+","",title.lower())
-                    if not link or unique in seen: continue
-                    seen.add(unique); domain=urlparse(link).netloc.lower().removeprefix("www.")
+                    link=entry.get("link",""); title=entry.get("title",""); unique=re.sub(r"\W+","",title.lower()); cu=canonical_url(link)
+                    if not link or unique in seen or cu in seen: continue
+                    seen.add(unique); seen.add(cu); domain=urlparse(link).netloc.lower().removeprefix("www.")
                     if own_domain and own_domain.lower() in domain: continue
                     snippet=re.sub("<[^>]+>"," ",entry.get("summary",entry.get("description","")))[:700]
                     angle=infer_angle(title,snippet); score=competitor_match_score(source,title,snippet); gap=suggested_gap_from_angle(angle,source)
@@ -137,9 +198,17 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         with ThreadPoolExecutor(max_workers=5) as pool:
             futures={pool.submit(scrape_article,row["url"]):row for row in real[:12]}
             for future in as_completed(futures): futures[future].update(future.result())
+        if real:
+            src_text=f'{source.get("topic","")} {source.get("keywords","")} {source.get("title","")} {source.get("h1","")}'
+            sem=semantic_match_scores(src_text,[f'{r.get("title","")} {r.get("scraped_excerpt") or r.get("snippet","")}' for r in real])
+            if sem:
+                for row,sc in zip(real,sem):
+                    row["competitor_match_score"]=sc; row["competitor_match_reason"]=f"Similarità semantica con tema Discover: {sc}%"
         frame=pd.DataFrame(source_rows)
         if use_hermes and not frame.empty:
             _,note=refine_with_hermes(source,frame,audience_context,hermes_command); hermes_notes.append({"source_url":source["url"],"result":note})
+        elif use_llm and not frame[frame.url.fillna("").ne("")].empty:
+            note=refine_with_llm(source,frame[frame.url.fillna("").ne("")],audience_context,llm_provider,llm_model); hermes_notes.append({"source_url":source["url"],"result":note})
         rows.extend(source_rows)
     research=pd.DataFrame(rows).reindex(columns=RESULT_COLUMNS)
     if not research.empty:

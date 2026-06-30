@@ -40,7 +40,7 @@ with st.sidebar:
     st.header("Crawler pagine")
     max_crawl=st.slider("URL da analizzare",1,20,5); delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
     st.header("Ricerca competitor/fresca")
-    research_provider=st.selectbox("Provider",["Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"])
+    research_provider=st.selectbox("Provider",["AI (LLM) + Web scraper","Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"],help="AI (LLM) raffina le evidenze con OpenAI/Anthropic e usa il match semantico via embeddings; richiede una API key in .env, altrimenti torna automaticamente alle euristiche locali.")
     own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
     feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml\nhttps://www.agi.it/rss\nhttps://www.rainews.it/rss/tutti\nhttps://www.wired.it/feed/rss\nhttps://www.corriere.it/rss/homepage.xml")
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
@@ -115,15 +115,18 @@ with tabs[2]:
     else:
         provider=research_provider
         use_hermes=provider=="Hermes Agent + Web scraper"
-        if provider in ("Hermes Agent + Web scraper","Google News RSS"): provider="Web scraper + Google News"
+        use_llm=provider=="AI (LLM) + Web scraper"
+        if provider in ("Hermes Agent + Web scraper","AI (LLM) + Web scraper","Google News RSS"): provider="Web scraper + Google News"
         st.caption("Parte dalle URL con i migliori segnali Discover, trova fonti esterne, estrae il testo e propone contenuti originali.")
+        if use_llm:
+            st.success("Modalità AI: match semantico via embeddings e raffinamento LLM; senza API key il sistema usa euristiche e scoring locali.")
         if use_hermes:
             from src.fresh_research import hermes_available
             if hermes_available(hermes_command): st.success("Hermes Agent rilevato: le evidenze saranno passate all’agente.")
             else: st.warning("Hermes Agent non è installato o non è nel PATH. Il web scraper funzionerà comunque con suggerimenti locali.")
         if st.button("Avvia ricerca competitor",type="primary"):
             with st.spinner("Ricerca guidata dai topic che stanno già funzionando..."):
-                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command)
+                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model)
                 st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
         if st.session_state.research_df is not None:
             research=st.session_state.research_df
@@ -144,7 +147,7 @@ with tabs[2]:
                 result=note.get("result")
                 if isinstance(result,str): st.info(result)
                 elif isinstance(result,dict) and result.get("suggestions"):
-                    st.subheader("Raccomandazioni Hermes Agent")
+                    st.subheader("Raccomandazioni AI (LLM / Hermes)")
                     for suggestion in result["suggestions"]:
                         with st.container(border=True):
                             st.markdown(f"#### {suggestion.get('title','Idea Hermes')}")

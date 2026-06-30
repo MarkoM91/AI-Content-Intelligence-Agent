@@ -50,6 +50,8 @@ Lo scoring è trasparente e dimostrativo, non causale: combina volume, gap CTR e
 
 ## Ricerca web e Hermes Agent
 
-`Web scraper + Google News` è il percorso predefinito: parte dalle pagine Discover migliori, cerca fonti reali, deduplica i risultati, estrae il testo delle pagine e genera suggerimenti editoriali motivati. Non richiede API key.
+`AI (LLM) + Web scraper` è il percorso AI consigliato: oltre al web scraping, calcola il match con i temi Discover tramite **similarità semantica (embeddings OpenAI)** invece del semplice overlap di parole, e raffina le evidenze in 3 contenuti originali con OpenAI/Anthropic. Richiede una API key in `.env`; senza key valida (o senza quota) torna automaticamente alle euristiche e allo scoring locali.
+
+`Web scraper + Google News` è il percorso senza API: parte dalle pagine Discover migliori, cerca fonti reali, deduplica i risultati (anche per URL canonicalizzata, ignorando parametri di tracking), estrae il testo delle pagine e genera suggerimenti editoriali motivati.
 
 `Hermes Agent + Web scraper` passa le evidenze raccolte all'installazione locale ufficiale di Hermes tramite la modalità one-shot `hermes -z`. Hermes deve essere installato e autenticato separatamente; se non è disponibile, l'app mantiene il risultato del web scraper e mostra un fallback esplicito. Documentazione ufficiale: https://hermes-agent.nousresearch.com/docs/reference/cli-commands
