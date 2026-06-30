@@ -262,13 +262,22 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         search_specs=[("broad",q) for q in queries]
         if is_google and topic:
             search_specs+=[("site",f"site:{d} {topic} when:30d",d) for d in CURATED_COMPETITORS]
-        for spec in search_specs:
-            kind,query=spec[0],spec[1]
-            if provider=="Piano locale":
-                source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider}); continue
-            try:
-                if provider=="RSS personalizzati": entries=custom_rss_search(feed_urls,query)
-                else: entries=google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:30d").entries
+        if provider=="Piano locale":
+            for kind,query,*_ in search_specs:
+                source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider})
+        else:
+            def _fetch(spec):
+                kind,query=spec[0],spec[1]
+                try:
+                    if provider=="RSS personalizzati": return spec,custom_rss_search(feed_urls,query),None
+                    return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:30d").entries,None
+                except Exception as exc: return spec,[],str(exc)
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                fetched=list(pool.map(_fetch,search_specs))
+            # processa sequenzialmente per preservare la deduplica
+            for (kind,query,*_),entries,err in fetched:
+                if err:
+                    source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"title":"Errore ricerca","snippet":err[:300],"competitor_match_score":0,"competitor_match_reason":"Provider non disponibile","angle":"errore","suggested_gap":"Riprovare","scrape_status":"Errore","research_provider":provider}); continue
                 for entry in entries[:(3 if kind=="site" else 8)]:
                     link=entry.get("link",""); title=entry.get("title",""); unique=re.sub(r"\W+","",title.lower()); cu=canonical_url(link)
                     if not link or unique in seen or cu in seen: continue
@@ -279,8 +288,6 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                     suggestion,reason,fmt=_recommendation(source,title,angle,gap)
                     publisher=entry.get("source",{}).get("title",domain) if hasattr(entry.get("source",{}),"get") else domain
                     source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":publisher,"title":title,"url":link,"snippet":snippet,"published_date":entry.get("published",entry.get("updated","")),"competitor_domain":domain,"competitor_match_score":score,"competitor_match_reason":f"Coerenza con tema/keyword Discover: {score}%","angle":angle,"suggested_gap":gap,"scraped_title":"","scraped_excerpt":"","scrape_status":"In attesa","article_suggestion":suggestion,"audience_reason":reason,"recommended_format":fmt,"research_provider":provider})
-            except Exception as exc:
-                source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"title":"Errore ricerca","snippet":str(exc)[:300],"competitor_match_score":0,"competitor_match_reason":"Provider non disponibile","angle":"errore","suggested_gap":"Riprovare","scrape_status":"Errore","research_provider":provider})
         real=[row for row in source_rows if row.get("url")]
         with ThreadPoolExecutor(max_workers=5) as pool:
             futures={pool.submit(scrape_article,row["url"]):row for row in real[:16]}
