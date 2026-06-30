@@ -1,0 +1,146 @@
+import json
+from pathlib import Path
+import pandas as pd
+import streamlit as st
+from dotenv import load_dotenv
+from src.csv_loader import read_csv
+from src.analysis import analyze_single_window, analyze_comparison
+from src.crawler import enrich_analyzed_dataframe
+from src.fresh_research import add_research_to_dataframe
+from src.llm import generate_brief
+from src.agents import propose_actions
+from src.reporting import generate_markdown_report, generate_json_export
+
+load_dotenv(); st.set_page_config(page_title="AI Content Intelligence Agent",page_icon="🧭",layout="wide")
+st.title("AI Content Intelligence Agent")
+st.caption("GSC/Discover → scoring → crawler → competitor research → brief → approvazione umana → report")
+
+DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"briefs":[],"approvals":[],"hermes_notes":[],"mode_label":"Demo CSV"}
+for k,v in DEFAULTS.items():
+    if k not in st.session_state: st.session_state[k]=v
+
+with st.sidebar:
+    st.header("Contesto cliente")
+    client=st.text_input("Cliente / progetto","Agenzia digitale demo")
+    context=st.text_area("Target, mercato e tono","Editore italiano; tono autorevole, chiaro e verificabile.")
+    goal=st.text_input("Obiettivo","Crescita organica e opportunità editoriali")
+    st.header("Dati")
+    input_mode=st.radio("Modalità",["Demo CSV","Carica un CSV","Confronta due CSV","Google Search Console API"])
+    st.header("Crawler pagine")
+    max_crawl=st.slider("URL da analizzare",1,20,5); delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
+    st.header("Ricerca competitor/fresca")
+    research_provider=st.selectbox("Provider",["Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"])
+    own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
+    feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml")
+    hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
+    st.header("Generazione brief")
+    brief_mode=st.radio("Motore",["Regole locali","AI con LLM"])
+    llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
+    model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
+
+tabs=st.tabs(["1. Dati","2. Analisi + crawler","3. Competitor research","4. Brief e approvazioni","5. Report"])
+with tabs[0]:
+    st.subheader("Acquisizione dati")
+    if input_mode=="Demo CSV":
+        st.info("Dataset dimostrativo incluso: periodo corrente di 3 giorni e baseline di 7 giorni.")
+        if st.button("Carica e analizza demo",type="primary"):
+            st.session_state.short_df=pd.read_csv("sample_short_3d.csv"); st.session_state.long_df=pd.read_csv("sample_long_7d.csv")
+            st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,3,7); st.session_state.mode_label=input_mode
+    elif input_mode=="Carica un CSV":
+        up=st.file_uploader("Export Search Console",type="csv")
+        if st.button("Analizza CSV",disabled=up is None,type="primary"):
+            st.session_state.short_df=read_csv(up); st.session_state.analyzed=analyze_single_window(st.session_state.short_df); st.session_state.mode_label=input_mode
+    elif input_mode=="Confronta due CSV":
+        a=st.file_uploader("Periodo corrente / breve",type="csv"); b=st.file_uploader("Baseline / periodo lungo",type="csv"); c1,c2=st.columns(2); sd=c1.number_input("Giorni correnti",1,90,3); ld=c2.number_input("Giorni baseline",1,365,7)
+        if st.button("Confronta",disabled=a is None or b is None,type="primary"):
+            st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
+    else:
+        cfg=st.text_input("File configurazione","gsc_config.yaml")
+        st.warning("OAuth apre il browser locale. Copia gsc_config.example.yaml e non versionare le credenziali.")
+        if st.button("Scarica da GSC",type="primary"):
+            try:
+                from src.gsc_api import load_config,fetch_gsc
+                conf=load_config(cfg); sd=conf.get("windows",{}).get("short_days",3); ld=conf.get("windows",{}).get("long_days",7)
+                short,info1=fetch_gsc(conf,sd); long,info2=fetch_gsc(conf,ld)
+                if short.empty: st.warning("GSC non ha restituito righe per il periodo selezionato.")
+                else: st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"short":info1,"long":info2}; st.session_state.analyzed=analyze_comparison(short,long,sd,ld)
+            except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
+    if st.session_state.short_df is not None: st.dataframe(st.session_state.short_df.head(50),use_container_width=True)
+
+with tabs[1]:
+    analyzed=st.session_state.analyzed
+    if analyzed is None: st.info("Carica o genera i dati nella scheda Dati.")
+    else:
+        c1,c2,c3=st.columns(3); c1.metric("URL",len(analyzed)); c2.metric("Impression correnti",int(analyzed.impressions_current.sum())); c3.metric("Click correnti",int(analyzed.clicks_current.sum()))
+        st.dataframe(analyzed,use_container_width=True)
+        if st.button("Avvia crawler sulle URL principali"):
+            with st.spinner("Crawler in esecuzione..."):
+                enriched,logs=enrich_analyzed_dataframe(analyzed,max_crawl,delay); st.session_state.analyzed=enriched; st.session_state.crawl_log=logs
+            st.success("Arricchimento completato.")
+        if st.session_state.crawl_log: st.dataframe(pd.DataFrame(st.session_state.crawl_log),use_container_width=True)
+
+with tabs[2]:
+    if st.session_state.analyzed is None: st.info("Prima esegui l’analisi.")
+    else:
+        provider=research_provider
+        use_hermes=provider=="Hermes Agent + Web scraper"
+        if provider in ("Hermes Agent + Web scraper","Google News RSS"): provider="Web scraper + Google News"
+        st.caption("Parte dalle URL con i migliori segnali Discover, trova fonti esterne, estrae il testo e propone contenuti originali.")
+        if use_hermes:
+            from src.fresh_research import hermes_available
+            if hermes_available(hermes_command): st.success("Hermes Agent rilevato: le evidenze saranno passate all’agente.")
+            else: st.warning("Hermes Agent non è installato o non è nel PATH. Il web scraper funzionerà comunque con suggerimenti locali.")
+        if st.button("Avvia ricerca competitor",type="primary"):
+            with st.spinner("Ricerca guidata dai topic che stanno già funzionando..."):
+                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command)
+                st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
+        if st.session_state.research_df is not None:
+            research=st.session_state.research_df
+            real=research[research.url.fillna("").ne("")] if "url" in research else research
+            c1,c2,c3=st.columns(3)
+            c1.metric("Fonti reali",len(real)); c2.metric("Domini",real.competitor_domain.replace("",pd.NA).dropna().nunique() if "competitor_domain" in real else 0); c3.metric("Pagine estratte",real.scrape_status.fillna("").str.startswith("OK").sum() if "scrape_status" in real else 0)
+            st.subheader("Suggerimenti editoriali per il tuo pubblico")
+            suggestions=real.sort_values("competitor_match_score",ascending=False).drop_duplicates(["source_url","article_suggestion"]).head(12)
+            for _,item in suggestions.iterrows():
+                with st.container(border=True):
+                    st.markdown(f"#### {item.get('article_suggestion','Idea da sviluppare')}")
+                    st.write(item.get("audience_reason",""))
+                    st.caption(f"Formato: {item.get('recommended_format','')} · Angolo competitor: {item.get('angle','')} · Match: {item.get('competitor_match_score',0)}")
+                    if item.get("url"): st.link_button("Apri fonte",item["url"])
+            with st.expander("Evidenze e dati tecnici"):
+                st.dataframe(research,use_container_width=True)
+            for note in st.session_state.hermes_notes:
+                result=note.get("result")
+                if isinstance(result,str): st.info(result)
+                elif isinstance(result,dict) and result.get("suggestions"):
+                    st.subheader("Raccomandazioni Hermes Agent")
+                    for suggestion in result["suggestions"]:
+                        with st.container(border=True):
+                            st.markdown(f"#### {suggestion.get('title','Idea Hermes')}")
+                            st.write(suggestion.get("audience_reason",""))
+                            st.caption(f"Formato: {suggestion.get('format','')} · Angolo: {suggestion.get('angle','')}")
+
+with tabs[3]:
+    if st.session_state.analyzed is None: st.info("Prima esegui l’analisi.")
+    else:
+        options=st.session_state.analyzed.head(20); selected=st.selectbox("Contenuto",options.url,format_func=lambda u: f"{options.loc[options.url.eq(u),'topic'].iloc[0]} — {u}")
+        if st.button("Genera brief",type="primary"):
+            row=options.loc[options.url.eq(selected)].iloc[0].to_dict(); brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal); brief["source_url"]=selected
+            st.session_state.briefs=[b for b in st.session_state.briefs if b.get("source_url")!=selected]+[brief]
+            st.session_state.approvals=[a for a in st.session_state.approvals if a.get("source_url")!=selected]+[{**a,"source_url":selected} for a in propose_actions(brief,row)]
+            if error: st.warning(error)
+        for i,b in enumerate(st.session_state.briefs):
+            with st.expander(b.get("titolo_consigliato",f"Brief {i+1}"),expanded=True): st.json(b)
+        if st.session_state.approvals:
+            st.subheader("Coda di approvazione umana")
+            for i,a in enumerate(st.session_state.approvals):
+                c1,c2,c3=st.columns([4,1,2]); c1.markdown(f"**{a['azione']}**  \n{a['motivo']} — Responsabile: {a['responsabile']}"); c2.write(f"Rischio: {a['rischio']}")
+                opts=["In attesa","Approva","Modifica","Rifiuta","Auto-approvata"]; a["stato"]=c3.selectbox("Stato",opts,index=opts.index(a["stato"]),key=f"approval_{i}",label_visibility="collapsed")
+
+with tabs[4]:
+    if st.session_state.analyzed is None: st.info("Non ci sono dati da esportare.")
+    else:
+        md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client); workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label})
+        st.markdown(md)
+        c1,c2,c3=st.columns(3); c1.download_button("Scarica report Markdown",md,"report_ai_content.md","text/markdown"); c2.download_button("Scarica CSV analizzato",st.session_state.analyzed.to_csv(index=False).encode("utf-8-sig"),"contenuti_analizzati.csv","text/csv"); c3.download_button("Scarica workflow JSON",workflow,"workflow.json","application/json")
+        if st.session_state.research_df is not None: st.download_button("Scarica ricerca competitor CSV",st.session_state.research_df.to_csv(index=False).encode("utf-8-sig"),"ricerca_competitor.csv","text/csv")

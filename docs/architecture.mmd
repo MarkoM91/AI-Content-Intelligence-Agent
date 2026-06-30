@@ -1,0 +1,8 @@
+flowchart LR
+ A["CSV / GSC API"] --> B["Normalizzazione e scoring"]
+ B --> C["Crawler"]
+ C --> D["Ricerca topic-first"]
+ D --> E["Regole o LLM"]
+ E --> F["Approvazione umana"]
+ F --> G["Markdown / CSV / JSON"]
+ H["Piano locale / News RSS / RSS custom"] --> D
