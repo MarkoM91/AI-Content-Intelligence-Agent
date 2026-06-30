@@ -49,7 +49,8 @@ with st.sidebar:
     seed_strategy=st.selectbox("Contenuti da analizzare",["Top per click (cosa funziona)","Migliori per opportunità","In crescita"],help="Da quali contenuti Discover partire per cercare coperture competitor simili.")
     min_match=st.slider("Soglia di pertinenza fonti (%)",0,100,35,help="Mostra solo le coperture competitor con un match (semantico o euristico) sopra questa soglia. Alza il valore per fonti più precise.")
     own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
-    feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml\nhttps://www.agi.it/rss\nhttps://www.rainews.it/rss/tutti\nhttps://www.wired.it/feed/rss\nhttps://www.corriere.it/rss/homepage.xml")
+    from src.fresh_research import DEFAULT_RSS_FEEDS
+    feeds=st.text_area("Feed RSS, uno per riga","\n".join(DEFAULT_RSS_FEEDS),height=160)
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
     st.header("Generazione brief")
     brief_mode=st.radio("Motore",["AI con LLM","Regole locali"])

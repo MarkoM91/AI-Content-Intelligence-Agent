@@ -187,6 +187,58 @@ def refine_with_hermes(source, candidates, audience_context="", command="hermes"
         return candidates,_parse_json(proc.stdout)
     except Exception as exc: return candidates,f"Hermes non disponibile, fallback locale: {str(exc)[:220]}"
 
+# Domini competitor italiani per la ricerca mirata site: su Google News.
+CURATED_COMPETITORS=["corriere.it","repubblica.it","ansa.it","ilsole24ore.com","tg24.sky.it",
+    "tgcom24.mediaset.it","today.it","fanpage.it","ilmessaggero.it","lastampa.it",
+    "ilfattoquotidiano.it","adnkronos.com","rainews.it","ilpost.it"]
+
+# Feed RSS italiani predefiniti, organizzati per verticale.
+DEFAULT_RSS_FEEDS=[
+    "https://www.ansa.it/sito/ansait_rss.xml","https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml",
+    "https://www.ansa.it/sito/notizie/economia/economia_rss.xml","https://www.ansa.it/canale_tecnologia/notizie/tecnologia_rss.xml",
+    "https://www.adnkronos.com/rss","https://www.agi.it/rss.xml",
+    "https://www.repubblica.it/rss/homepage/rss2.0.xml","https://www.repubblica.it/rss/economia/rss2.0.xml",
+    "https://www.repubblica.it/rss/cronaca/rss2.0.xml","https://www.repubblica.it/rss/tecnologia/rss2.0.xml",
+    "https://xml2.corriereobjects.it/rss/homepage.xml","https://xml2.corriereobjects.it/rss/cronache.xml",
+    "https://xml2.corriereobjects.it/rss/economia.xml","https://xml2.corriereobjects.it/rss/scienze.xml",
+    "https://www.lastampa.it/rss.xml","https://www.ilfattoquotidiano.it/feed/","https://www.ilpost.it/feed/",
+    "https://www.open.online/feed/","https://www.rainews.it/rss",
+    "https://www.tgcom24.mediaset.it/rss/homepage.xml","https://www.tgcom24.mediaset.it/rss/cronaca.xml",
+    "https://www.tgcom24.mediaset.it/rss/economia.xml","https://www.tgcom24.mediaset.it/rss/tgtech.xml",
+    "https://www.today.it/feed/","https://www.milanotoday.it/feed/","https://www.romatoday.it/feed/",
+    "https://www.ilsole24ore.com/rss/italia.xml","https://www.ilsole24ore.com/rss/economia.xml",
+    "https://www.ilsole24ore.com/rss/finanza.xml","https://www.ilsole24ore.com/rss/tecnologia.xml",
+    "https://quifinanza.it/feed/","https://www.economyup.it/feed/",
+    "https://www.punto-informatico.it/feed/","https://www.agendadigitale.eu/feed/",
+    "https://www.dday.it/rss","https://www.hdblog.it/rss/","https://www.macitynet.it/feed/","https://www.tomshw.it/feed/",
+    "https://www.focus.it/rss","https://www.fanpage.it/feed/","https://www.geopop.it/feed/","https://www.cookist.it/feed/"]
+
+def llm_plan_research(source, provider="OpenAI", model=""):
+    """Chiede all'LLM il TIPO/FORMATO del contenuto e le query per trovare
+    coperture competitor dello stesso formato. Ritorna (content_type, [queries])
+    oppure None se non disponibile (il chiamante usa build_queries euristico)."""
+    import os
+    key=os.getenv("ANTHROPIC_API_KEY" if provider=="Anthropic" else "OPENAI_API_KEY")
+    if not key: return None
+    label=seed_label(source)
+    prompt=(f'Sei un content strategist SEO italiano. Dato un contenuto che funziona su Google Discover, '
+            f'1) classifica il TIPO/FORMATO (es: news, guida how-to, analisi, dati/report, opinione, '
+            f'gossip/intrattenimento, lista/classifica, intervista). '
+            f'2) genera 4 query brevi per cercare su Google News coperture competitor dello STESSO formato sullo stesso tema. '
+            f'Rispondi solo JSON: {{"content_type":"","queries":[]}}. '
+            f'Titolo: {label}. URL: {source.get("url","")}. Topic: {source.get("topic","")}. Keyword: {source.get("keywords","")}.')
+    try:
+        if provider=="Anthropic":
+            from anthropic import Anthropic
+            text=Anthropic(api_key=key).messages.create(model=model or "claude-3-5-sonnet-latest",max_tokens=600,messages=[{"role":"user","content":prompt}]).content[0].text
+        else:
+            from openai import OpenAI
+            text=OpenAI(api_key=key).chat.completions.create(model=model or "gpt-4o-mini",messages=[{"role":"user","content":prompt}],response_format={"type":"json_object"}).choices[0].message.content
+        data=_parse_json(text); queries=[str(q).strip() for q in data.get("queries",[]) if str(q).strip()][:4]
+        return (str(data.get("content_type","")).strip(),queries) if queries else None
+    except Exception:
+        return None
+
 def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     """Sceglie i contenuti Discover da usare come base per la ricerca competitor.
     'cosa funziona' = top per click; altrimenti per opportunità o crescita."""
@@ -202,12 +254,22 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
     for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
         source=source_series.to_dict(); seen=set(); source_rows=[]
-        for query in build_queries(source):
+        plan=llm_plan_research(source,llm_provider,llm_model) if use_llm else None
+        seed_format,queries=(plan if plan else ("",build_queries(source)))
+        topic=str(source.get("topic","") or "").strip()
+        is_google=provider not in ("RSS personalizzati","Piano locale")
+        # broad queries (sullo stesso formato) + ricerca mirata site: sui competitor curati
+        search_specs=[("broad",q) for q in queries]
+        if is_google and topic:
+            search_specs+=[("site",f"site:{d} {topic} when:30d",d) for d in CURATED_COMPETITORS]
+        for spec in search_specs:
+            kind,query=spec[0],spec[1]
             if provider=="Piano locale":
                 source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider}); continue
             try:
-                entries=custom_rss_search(feed_urls,query) if provider=="RSS personalizzati" else google_news_rss_search(query).entries
-                for entry in entries[:8]:
+                if provider=="RSS personalizzati": entries=custom_rss_search(feed_urls,query)
+                else: entries=google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:30d").entries
+                for entry in entries[:(3 if kind=="site" else 8)]:
                     link=entry.get("link",""); title=entry.get("title",""); unique=re.sub(r"\W+","",title.lower()); cu=canonical_url(link)
                     if not link or unique in seen or cu in seen: continue
                     seen.add(unique); seen.add(cu); domain=urlparse(link).netloc.lower().removeprefix("www.")
@@ -221,7 +283,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                 source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"title":"Errore ricerca","snippet":str(exc)[:300],"competitor_match_score":0,"competitor_match_reason":"Provider non disponibile","angle":"errore","suggested_gap":"Riprovare","scrape_status":"Errore","research_provider":provider})
         real=[row for row in source_rows if row.get("url")]
         with ThreadPoolExecutor(max_workers=5) as pool:
-            futures={pool.submit(scrape_article,row["url"]):row for row in real[:12]}
+            futures={pool.submit(scrape_article,row["url"]):row for row in real[:16]}
             for future in as_completed(futures): futures[future].update(future.result())
         for row in real:
             resolved=urlparse(row.get("resolved_url","") or "").netloc.lower().removeprefix("www.")
