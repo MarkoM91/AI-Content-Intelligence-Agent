@@ -4,8 +4,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from src.csv_loader import read_csv
-from src.analysis import analyze_single_window, analyze_comparison
+from src.analysis import analyze_comparison
 from src.crawler import enrich_analyzed_dataframe
 from src.fresh_research import add_research_to_dataframe
 from src.llm import generate_brief
@@ -42,7 +41,7 @@ with st.sidebar:
     context=st.text_area("Target, mercato e tono","Editore italiano; tono autorevole, chiaro e verificabile.")
     goal=st.text_input("Obiettivo","Crescita organica e opportunità editoriali")
     st.header("Dati")
-    input_mode=st.radio("Modalità",["Demo CSV","Carica un CSV","Confronta due CSV","Google Search Console API"])
+    input_mode=st.radio("Modalità",["Google Search Console API","Demo CSV"])
     st.header("Crawler pagine")
     max_crawl=st.slider("URL da analizzare",1,20,5); delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
     st.header("Ricerca competitor/fresca")
@@ -51,7 +50,7 @@ with st.sidebar:
     feeds=st.text_area("Feed RSS, uno per riga","https://www.ansa.it/sito/ansait_rss.xml\nhttps://www.ilsole24ore.com/rss/italia.xml\nhttps://www.agi.it/rss\nhttps://www.rainews.it/rss/tutti\nhttps://www.wired.it/feed/rss\nhttps://www.corriere.it/rss/homepage.xml")
     hermes_command=st.text_input("Comando Hermes","hermes",help="Usato solo con Hermes Agent + Web scraper")
     st.header("Generazione brief")
-    brief_mode=st.radio("Motore",["Regole locali","AI con LLM"])
+    brief_mode=st.radio("Motore",["AI con LLM","Regole locali"])
     llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
     model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
 
@@ -63,14 +62,6 @@ with tabs[0]:
         if st.button("Carica e analizza demo",type="primary"):
             st.session_state.short_df=pd.read_csv("sample_short_3d.csv"); st.session_state.long_df=pd.read_csv("sample_long_7d.csv")
             st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,3,7); st.session_state.mode_label=input_mode
-    elif input_mode=="Carica un CSV":
-        up=st.file_uploader("Export Search Console",type="csv")
-        if st.button("Analizza CSV",disabled=up is None,type="primary"):
-            st.session_state.short_df=read_csv(up); st.session_state.analyzed=analyze_single_window(st.session_state.short_df); st.session_state.mode_label=input_mode
-    elif input_mode=="Confronta due CSV":
-        a=st.file_uploader("Periodo corrente / breve",type="csv"); b=st.file_uploader("Baseline / periodo lungo",type="csv"); c1,c2=st.columns(2); sd=c1.number_input("Giorni correnti",1,90,3); ld=c2.number_input("Giorni baseline",1,365,7)
-        if st.button("Confronta",disabled=a is None or b is None,type="primary"):
-            st.session_state.short_df=read_csv(a); st.session_state.long_df=read_csv(b); st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,sd,ld); st.session_state.mode_label=input_mode
     else:
         cfg="gsc_config.yaml"
         range_days=st.number_input("Periodo Discover corrente (giorni)",min_value=7,max_value=480,value=90,step=1,help="Confrontato con il periodo precedente della stessa durata.")
