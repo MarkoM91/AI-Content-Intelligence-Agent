@@ -116,6 +116,7 @@ with st.sidebar:
     seed_strategy=st.selectbox("Contenuti da analizzare",["Top per click (cosa funziona)","Migliori per opportunità","In crescita"],help="Da quali contenuti Discover partire per cercare coperture competitor simili.")
     freshness_label=st.selectbox("Freschezza fonti",["Ultime 24h","Ultimi 7 giorni","Ultimi 30 giorni"],index=1,help="Finestra temporale della ricerca web competitor. 24h = solo contenuti pubblicati oggi/ieri (notizia del momento).")
     freshness={"Ultime 24h":"1d","Ultimi 7 giorni":"7d","Ultimi 30 giorni":"30d"}[freshness_label]
+    include_reddit=st.checkbox("Includi Reddit (best-effort)",value=False,help="Aggiunge articoli linkati su Reddit. Gratuito, ma Reddit blocca spesso gli IP server: se non risponde viene ignorato senza errori.")
     min_match=st.slider("Soglia di pertinenza fonti (%)",0,100,35,help="Mostra solo le coperture competitor con un match (semantico o euristico) sopra questa soglia. Alza il valore per fonti più precise.")
     own_domain=st.text_input("Dominio proprio da escludere","affaritaliani.it")
     from src.fresh_research import DEFAULT_RSS_FEEDS
@@ -195,7 +196,7 @@ with tabs[2]:
             else: st.warning("Hermes Agent non è installato o non è nel PATH. Il web scraper funzionerà comunque con suggerimenti locali.")
         if st.button("Avvia ricerca competitor",type="primary"):
             with st.spinner("Ricerca guidata dai topic che stanno già funzionando..."):
-                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness)
+                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit)
                 st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
         if st.session_state.research_df is not None:
             research=st.session_state.research_df

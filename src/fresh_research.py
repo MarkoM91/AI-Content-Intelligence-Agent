@@ -105,6 +105,21 @@ def suggested_gap_from_angle(angle, row):
 def google_news_rss_search(query):
     return _parse_feed(f"https://news.google.com/rss/search?q={quote(query)}&hl=it&gl=IT&ceid=IT:it")
 
+def reddit_search(query, window="7d", limit=10):
+    """Cerca articoli linkati su Reddit (JSON pubblico, gratuito). Ritorna solo
+    i link esterni (vere notizie), nello stesso formato delle entry RSS."""
+    t={"1d":"day","7d":"week","30d":"month"}.get(window,"week")
+    url=f"https://www.reddit.com/search.json?q={quote(query)}&sort=new&t={t}&limit={limit}"
+    ua={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+    response=requests.get(url,headers=ua,timeout=12); response.raise_for_status()
+    out=[]
+    for child in response.json().get("data",{}).get("children",[]):
+        data=child.get("data",{}); link=data.get("url_overridden_by_dest") or data.get("url","")
+        if not link or "reddit.com" in link or "/comments/" in link: continue
+        out.append({"title":data.get("title",""),"link":link,"summary":str(data.get("selftext",""))[:500],
+            "description":"","published":"","source":{"title":data.get("subreddit_name_prefixed","Reddit")}})
+    return out
+
 def custom_rss_search(feed_urls, query):
     entries=[]
     for url in feed_urls: entries.extend(_parse_feed(url.strip()).entries)
@@ -266,7 +281,7 @@ def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     key="opportunity_score" if "opportunity_score" in d else d.columns[0]
     return d.sort_values(key,ascending=False).head(limit)
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d"):
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d",include_reddit=True):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
     window=str(freshness or "7d").strip()
     for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
@@ -279,6 +294,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
         search_specs=[("broad",q) for q in queries]
         if is_google and topic:
             search_specs+=[("site",f"site:{d} {topic} when:{window}",d) for d in CURATED_COMPETITORS]
+            if include_reddit: search_specs.append(("reddit",topic))
         if provider=="Piano locale":
             for kind,query,*_ in search_specs:
                 source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"publisher":"Task locale","title":f"Ricercare: {query}","url":"","snippet":"Query pronta per ricerca controllata.","published_date":"","competitor_domain":"","competitor_match_score":0,"competitor_match_reason":"Piano offline","angle":"da verificare","suggested_gap":"Raccogliere fonti reali","scraped_title":"","scraped_excerpt":"","scrape_status":"Non eseguito","article_suggestion":"","audience_reason":"","recommended_format":"","research_provider":provider})
@@ -286,6 +302,7 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
             def _fetch(spec):
                 kind,query=spec[0],spec[1]
                 try:
+                    if kind=="reddit": return spec,reddit_search(query,window),None
                     if provider=="RSS personalizzati": return spec,custom_rss_search(feed_urls,query),None
                     return spec,google_news_rss_search(query if kind=="site" or "when:" in query else f"{query} when:{window}").entries,None
                 except Exception as exc: return spec,[],str(exc)
@@ -294,8 +311,9 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
             # processa sequenzialmente per preservare la deduplica
             for (kind,query,*_),entries,err in fetched:
                 if err:
+                    if kind=="reddit": continue  # Reddit blocca spesso gli IP server: fallimento silenzioso
                     source_rows.append({"source_url":source["url"],"topic":source.get("topic",""),"query_used":query,"title":"Errore ricerca","snippet":err[:300],"competitor_match_score":0,"competitor_match_reason":"Provider non disponibile","angle":"errore","suggested_gap":"Riprovare","scrape_status":"Errore","research_provider":provider}); continue
-                for entry in entries[:(3 if kind=="site" else 8)]:
+                for entry in entries[:(3 if kind=="site" else 6 if kind=="reddit" else 8)]:
                     link=entry.get("link",""); title=entry.get("title",""); unique=re.sub(r"\W+","",title.lower()); cu=canonical_url(link)
                     if not link or unique in seen or cu in seen: continue
                     seen.add(unique); seen.add(cu); domain=urlparse(link).netloc.lower().removeprefix("www.")
