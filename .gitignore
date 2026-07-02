@@ -10,3 +10,4 @@ data/
 multi_site.yaml
 outputs/
 *service-account*.json
+.claude/

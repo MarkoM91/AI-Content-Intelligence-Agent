@@ -1,7 +1,7 @@
 # AI Content Intelligence Agent per Agenzie Digitali
 
 
-Portfolio project Streamlit in italiano: un workflow controllato, non un semplice chatbot. Parte da GSC/Discover, identifica opportunità, arricchisce le pagine, cerca coperture competitor coerenti con temi già validati, produce brief e ferma le azioni esterne in una coda di approvazione.
+Portfolio project Streamlit in italiano: un workflow controllato, non un semplice chatbot. Il modello è quello di Discover come feed di interessi: se un articolo ha performato, contenuti con gli stessi tratti editoriali possono ripetere il risultato. Il flusso: analizza i contenuti vincenti della finestra selezionata, estrae i pattern ricorrenti (titolo, sottotitolo, tema, angolo, formato, tono) confrontandoli con il resto del sito, cerca sul web coperture comparabili che confermino che l'interesse è vivo, e produce brief operativi per replicare il successo. Le azioni esterne restano in una coda di approvazione umana.
 
 ## Avvio
 
@@ -16,11 +16,11 @@ Nessuna API a pagamento è necessaria: `Demo CSV`, `Piano locale` e `Regole loca
 
 ## Demo
 
-1. Caricare la demo in **Dati**.
-2. Consultare score e stati; opzionalmente avviare il crawler.
-3. Avviare Piano locale o Google News RSS in **Competitor research**.
-4. Generare un brief e gestire la coda approvazioni.
-5. Esportare Markdown, CSV, ricerca e workflow JSON.
+1. Caricare la demo in **01 Signals**.
+2. In **02 What Worked** avviare il crawler (opzionale, migliora i titoli reali) ed estrarre i pattern ricorrenti: ogni pattern mostra prevalenza tra i vincitori, baseline sul resto del sito e lift.
+3. In **03 Next Bets** cercare contenuti comparabili sul web (Piano locale o Google News RSS senza API): le fonti esterne vengono annotate con i pattern che condividono con i vincitori e alimentano una shortlist di idee con replication score trasparente.
+4. In **04 Brief & Decide** trasformare un'idea in brief operativo (il titolo applica i pattern osservati) e gestire la coda approvazioni.
+5. In **05 Results** registrare pubblicazione e feedback, poi esportare Markdown, CSV, ricerca e workflow JSON.
 
 I dati restano in `st.session_state`: cambiare da Regole locali ad AI con LLM non azzera l'analisi.
 

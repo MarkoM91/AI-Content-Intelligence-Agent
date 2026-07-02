@@ -13,7 +13,7 @@ from src.reporting import generate_markdown_report, generate_json_export
 from src.storage import save_snapshot, load_snapshot
 from src.csv_loader import read_csv
 from src.engagement import analyze_engagement_export, summarize_editorial_themes
-from src.audience_intelligence import build_audience_dna, build_discover_expansion
+from src.pattern_analysis import mine_patterns, annotate_comparables, build_replication_ideas
 
 load_dotenv()
 import os
@@ -115,19 +115,21 @@ def _suggestion_card(item):
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>{_match_badge(item.get("competitor_match_score",0))}</div>'
             f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')
 
-def _opportunity_card(item):
-    title=_html.escape(str(item.get("recommended_headline") or item.get("adjacent_topic","Territorio adiacente")))
-    argument=_html.escape(str(item.get("editorial_advice") or item.get("proposed_argument","")))
-    cluster=_html.escape(str(item.get("winning_cluster","")))
-    status=_html.escape(str(item.get("validation_status","")))
+def _idea_card(item):
+    title=_html.escape(str(item.get("recommended_headline") or item.get("source_title","Idea da sviluppare")))
+    advice=_html.escape(str(item.get("replication_advice") or item.get("editorial_advice","")))
     decision=_html.escape(str(item.get("editorial_decision","Da valutare")))
     urgency=_html.escape(str(item.get("urgency","")))
-    score=float(item.get("discover_potential",0) or 0)
+    recipe=_html.escape(str(item.get("title_recipe",""))[:90])
+    origin=_html.escape(str(item.get("source_title",""))[:60])
+    evidence=int(item.get("evidence_count",0) or 0)
+    score=float(item.get("replication_score",0) or 0)
     color="#176b52" if score>=70 else "#a76532" if score>=55 else "#66736e"
+    ev_chip=f'<span>Evidenze · {evidence} fonti esterne</span>' if evidence else '<span style="background:#f6e8df;color:#8a4928">Nessuna fonte esterna ancora</span>'
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>'
-            f'<span class="badge" style="background:{color}18;color:{color}">Potential {score:.0f}</span></div>'
-            f'<p class="sugg-reason"><b>{decision}</b> · {argument}</p><div class="sugg-meta"><span>Quando · {urgency}</span>'
-            f'<span>Origine · {cluster}</span><span>Adiacenza · {_html.escape(str(item.get("adjacency_type","")))}</span><span>{status}</span></div></div>')
+            f'<span class="badge" style="background:{color}18;color:{color}">Replica {score:.0f}</span></div>'
+            f'<p class="sugg-reason"><b>{decision}</b> · {advice}</p><div class="sugg-meta"><span>Quando · {urgency}</span>'
+            f'<span>Pattern · {recipe}</span>{ev_chip}<span>Origine · {origin}</span></div></div>')
 
 def _render_editorial_brief(brief):
     decision=str(brief.get("consiglio_editoriale") or "Da valutare")
@@ -173,7 +175,12 @@ def _show_table(df):
     if "engagement_score" in d.columns: cfg["engagement_score"]=st.column_config.ProgressColumn("Engagement",min_value=0,max_value=100,format="%.0f")
     if "theme_score" in d.columns: cfg["theme_score"]=st.column_config.ProgressColumn("Forza filone",min_value=0,max_value=100,format="%.0f")
     if "audience_strength" in d.columns: cfg["audience_strength"]=st.column_config.ProgressColumn("Forza audience",min_value=0,max_value=100,format="%.0f")
-    if "discover_potential" in d.columns: cfg["discover_potential"]=st.column_config.ProgressColumn("Discover potential",min_value=0,max_value=100,format="%.0f")
+    if "replication_score" in d.columns: cfg["replication_score"]=st.column_config.ProgressColumn("Replication score",min_value=0,max_value=100,format="%.0f")
+    if "pattern_score" in d.columns: cfg["pattern_score"]=st.column_config.ProgressColumn("Forza pattern",min_value=0,max_value=100,format="%.0f")
+    if "best_match_score" in d.columns: cfg["best_match_score"]=st.column_config.ProgressColumn("Miglior match",min_value=0,max_value=100,format="%.0f")
+    if "prevalence_pct" in d.columns: cfg["prevalence_pct"]=st.column_config.NumberColumn("Nei vincitori",format="%.0f%%")
+    if "baseline_pct" in d.columns: cfg["baseline_pct"]=st.column_config.NumberColumn("Nel resto",format="%.0f%%")
+    if "lift" in d.columns: cfg["lift"]=st.column_config.NumberColumn("Lift",format="%.2f×")
     if "competitor_match_score" in d.columns: cfg["competitor_match_score"]=st.column_config.ProgressColumn("Match",min_value=0,max_value=100,format="%.0f")
     for c,(lbl,fmt) in {"clicks":("Click","%d"),"clicks_current":("Click","%d"),"impressions":("Impression","%d"),"impressions_current":("Impression","%d"),"growth_pct":("Crescita %","%.0f%%"),"position":("Posizione","%.1f")}.items():
         if c in d.columns: cfg[c]=st.column_config.NumberColumn(lbl,format=fmt)
@@ -181,7 +188,7 @@ def _show_table(df):
         if c in d.columns: cfg[c]=st.column_config.NumberColumn(lbl,format=fmt)
     st.dataframe(d,use_container_width=True,column_config=cfg,hide_index=True)
 
-DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"audience_dna":None,"opportunities":None,"briefs":[],"approvals":[],"publishing_queue":[],"hermes_notes":[],"mode_label":"Demo CSV"}
+DEFAULTS={"analyzed":None,"short_df":None,"long_df":None,"gsc_info":{},"crawl_log":[],"research_df":None,"winners_profile":None,"patterns":None,"perf_metric":"","ideas":None,"briefs":[],"approvals":[],"publishing_queue":[],"hermes_notes":[],"mode_label":"Demo CSV"}
 for k,v in DEFAULTS.items():
     if k not in st.session_state: st.session_state[k]=v
 if "archive_restored" not in st.session_state:
@@ -232,7 +239,7 @@ with tabs[0]:
         if st.button("Carica e analizza demo",type="primary"):
             st.session_state.short_df=pd.read_csv("sample_short_3d.csv"); st.session_state.long_df=pd.read_csv("sample_long_7d.csv")
             st.session_state.analyzed=analyze_comparison(st.session_state.short_df,st.session_state.long_df,3,7); st.session_state.mode_label=input_mode
-            st.session_state.audience_dna=None; st.session_state.opportunities=None; st.session_state.research_df=None
+            st.session_state.winners_profile=None; st.session_state.patterns=None; st.session_state.ideas=None; st.session_state.research_df=None
     elif input_mode=="Export engagement CSV (7 giorni)":
         st.info("Carica un CSV con URL, pageview, tempo totale, tempo medio per view e flag. I nomi colonna comuni e gli export generici a 5 colonne vengono riconosciuti automaticamente.")
         engagement_upload=st.file_uploader("CSV pageview / engagement",type=["csv"],key="engagement_csv")
@@ -246,7 +253,7 @@ with tabs[0]:
                     st.session_state.long_df=None
                     st.session_state.analyzed=analyzed_engagement
                     st.session_state.mode_label=input_mode
-                    st.session_state.research_df=None; st.session_state.audience_dna=None; st.session_state.opportunities=None
+                    st.session_state.research_df=None; st.session_state.winners_profile=None; st.session_state.patterns=None; st.session_state.ideas=None
                     st.success(f"Analizzati {len(analyzed_engagement)} articoli. Ora puoi usare questi segnali nella ricerca competitor.")
             except Exception as exc: st.error(f"Impossibile leggere l'export engagement: {exc}")
     else:
@@ -277,7 +284,7 @@ with tabs[0]:
                 if short.empty: st.warning("GSC non ha restituito righe per il periodo selezionato.")
                 else:
                     st.session_state.short_df=short; st.session_state.long_df=long; st.session_state.gsc_info={"current":info1,"baseline":info2}; st.session_state.analyzed=analyze_comparison(short,long,current_days,current_days)
-                    st.session_state.audience_dna=None; st.session_state.opportunities=None; st.session_state.research_df=None
+                    st.session_state.winners_profile=None; st.session_state.patterns=None; st.session_state.ideas=None; st.session_state.research_df=None
                     snapshot_id=save_snapshot(st.session_state.analyzed,short,long,f"GSC Discover {current_days}g {info1['start']} → {info1['end']}",st.session_state.gsc_info)
                     st.success(f"Dati salvati nell’archivio locale (snapshot #{snapshot_id}).")
             except Exception as e: st.error(f"Impossibile scaricare i dati GSC: {e}")
@@ -307,29 +314,40 @@ with tabs[1]:
                 _show_table(analyzed.sort_values("avg_time_seconds",ascending=False)[["title","url","pageviews","avg_time_seconds","editorial_signal"]].head(10))
         else:
             c1,c2,c3=st.columns(3); c1.metric("URL",len(analyzed)); c2.metric("Impression correnti",int(analyzed.impressions_current.sum())); c3.metric("Click correnti",int(analyzed.clicks_current.sum()))
-        st.markdown("L'analisi separa tema, entità, hook e formato: non cerca keyword, ricostruisce il profilo di interesse attivato dai contenuti vincenti.")
-        if st.button("Costruisci Audience DNA",type="primary"):
-            st.session_state.audience_dna=build_audience_dna(analyzed)
-            st.session_state.opportunities=None
-        if st.session_state.audience_dna is not None:
-            dna=st.session_state.audience_dna
-            if dna.empty: st.info("Non ci sono ancora segnali sufficienti per costruire l'Audience DNA.")
+        st.markdown("L'analisi confronta i **vincitori della finestra** con il resto del sito: quali tratti di titolo, sottotitolo, tema, angolo, formato e tono ricorrono solo nei contenuti che hanno performato. Un pattern vale se ha prevalenza alta tra i vincitori e lift rispetto alla baseline.")
+        st.caption("Suggerimento: esegui prima il crawler qui sotto per estrarre H1, meta description e attacco reali — i pattern diventano più precisi.")
+        if st.button("Estrai i pattern ricorrenti",type="primary"):
+            profile,patterns,metric=mine_patterns(analyzed)
+            st.session_state.winners_profile=profile; st.session_state.patterns=patterns; st.session_state.perf_metric=metric
+            st.session_state.ideas=None
+        if st.session_state.winners_profile is not None:
+            profile=st.session_state.winners_profile; patterns=st.session_state.patterns
+            if profile.empty: st.info("Non ci sono ancora segnali sufficienti per estrarre pattern.")
             else:
                 d1,d2,d3=st.columns(3)
-                d1.metric("Cluster vincenti",dna.interest_cluster.nunique())
-                d2.metric("Entità riconosciute",len({x.strip() for values in dna.entities for x in str(values).split(",") if x.strip()}))
-                d3.metric("Forza media",f"{dna.audience_strength.mean():.0f}/100")
-                st.subheader("Verdetto editoriale")
-                for _,signal in dna.sort_values("audience_strength",ascending=False).head(5).iterrows():
-                    st.markdown(f"**{signal.get('interest_cluster','Cluster')} · {float(signal.get('audience_strength',0)):.0f}/100**  \n{signal.get('why_it_worked','')}  \n_Replica: {signal.get('winning_hook','hook da definire')} · Formato: {signal.get('winning_format','da definire')}_")
-                with st.expander("Apri la mappa completa degli interessi"):
-                    _show_table(dna[["source_title","interest_cluster","entities","winning_hook","winning_format","audience_strength","why_it_worked"]])
+                d1.metric("Vincitori analizzati",len(profile))
+                d2.metric("Pattern ricorrenti",0 if patterns is None or patterns.empty else len(patterns))
+                d3.metric("Metrica di successo",{"clicks_current":"Click Discover","engagement_score":"Engagement","opportunity_score":"Opportunità"}.get(st.session_state.perf_metric,st.session_state.perf_metric))
+                if patterns is not None and not patterns.empty:
+                    st.subheader("Verdetto: cosa si ripete nei contenuti vincenti")
+                    for _,p in patterns.head(6).iterrows():
+                        st.markdown(f"**{p.pattern_type} · {p.pattern} · {p.pattern_score:.0f}/100**  \nPresente nel {p.prevalence_pct:.0f}% dei vincitori (resto del sito: {p.baseline_pct:.0f}%, lift {p.lift:.1f}×).  \n_Esempi: {p.examples}_")
+                    with st.expander("Tutti i pattern con prevalenza, lift ed esempi"):
+                        _show_table(patterns)
+                else:
+                    st.info("Nessun tratto ricorre in almeno 2 vincitori: servono più articoli nella finestra o il crawler per titoli reali.")
+                with st.expander("Profilo editoriale dei singoli vincitori"):
+                    prof_view=profile.copy()
+                    prof_view["title_patterns"]=prof_view.title_patterns.map(lambda v:" · ".join(v))
+                    prof_view["structure_patterns"]=prof_view.structure_patterns.map(lambda v:" · ".join(v))
+                    _show_table(prof_view)
         with st.expander("Apri tutte le performance"):
             _show_table(analyzed)
         if st.button("Arricchisci i migliori articoli con il crawler"):
             with st.spinner("Crawler in esecuzione..."):
                 enriched,logs=enrich_analyzed_dataframe(analyzed,max_crawl,delay); st.session_state.analyzed=enriched; st.session_state.crawl_log=logs
-            st.success("Arricchimento completato.")
+                st.session_state.winners_profile=None; st.session_state.patterns=None; st.session_state.ideas=None
+            st.success("Arricchimento completato. Riestrai i pattern per usare titoli e meta reali.")
         if st.session_state.crawl_log: st.dataframe(pd.DataFrame(st.session_state.crawl_log),use_container_width=True)
 
 with tabs[2]:
@@ -338,17 +356,16 @@ with tabs[2]:
     st.write("Ogni proposta deve conservare l'interesse del cluster originale, aggiungere un fatto nuovo e superare una soglia minima di evidenze.")
     if st.session_state.analyzed is None: st.info("Prima importa i segnali nella tab 01.")
     else:
-        if st.session_state.audience_dna is None:
-            st.session_state.audience_dna=build_audience_dna(st.session_state.analyzed)
-        if st.session_state.opportunities is not None and "editorial_advice" not in st.session_state.opportunities.columns:
-            st.session_state.opportunities=build_discover_expansion(st.session_state.analyzed,st.session_state.research_df)
+        if st.session_state.winners_profile is None:
+            profile,patterns,metric=mine_patterns(st.session_state.analyzed)
+            st.session_state.winners_profile=profile; st.session_state.patterns=patterns; st.session_state.perf_metric=metric
         provider=research_provider
         use_hermes=provider=="Hermes Agent + Web scraper"
         use_llm=provider=="AI (LLM) + Web scraper"
         use_serper=provider=="Serper + Google News"
         if provider in ("Hermes Agent + Web scraper","AI (LLM) + Web scraper","Google News RSS","Serper + Google News"): provider="Web scraper + Google News"
         signal_source="pageview ed engagement" if "pageviews" in st.session_state.analyzed else "Google Discover"
-        st.caption(f"Base: Audience DNA derivato da {signal_source} · Freschezza validazione: {freshness_label}. Le fonti esterne validano l'adiacenza; non determinano da sole le idee.")
+        st.caption(f"Base: pattern estratti dai vincitori ({signal_source}) · Freschezza fonti: {freshness_label}. La ricerca trova coperture esterne comparabili ai vincitori: confermano che l'interesse è vivo adesso e mostrano gli angoli già occupati.")
         if use_llm:
             st.success("Modalità AI: match semantico via embeddings e raffinamento LLM; senza API key il sistema usa euristiche e scoring locali.")
         if use_hermes:
@@ -356,32 +373,32 @@ with tabs[2]:
             if hermes_available(hermes_command): st.success("Hermes Agent rilevato: le evidenze saranno passate all’agente.")
             else: st.warning("Hermes Agent non è installato o non è nel PATH. Il web scraper funzionerà comunque con suggerimenti locali.")
         local_col,web_col=st.columns(2)
-        if local_col.button("Crea shortlist dai segnali"):
-            st.session_state.opportunities=build_discover_expansion(st.session_state.analyzed,st.session_state.research_df)
-        if web_col.button("Aggiorna shortlist con il mercato",type="primary"):
-            with st.spinner("Espansione dei cluster vincenti e validazione delle adiacenze..."):
+        if local_col.button("Crea shortlist dai pattern"):
+            st.session_state.ideas=build_replication_ideas(st.session_state.analyzed,st.session_state.research_df)
+        if web_col.button("Cerca contenuti comparabili sul web",type="primary"):
+            with st.spinner("Ricerca di coperture esterne comparabili ai vincitori..."):
                 research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit,serper_api_key=os.getenv("SERPER_API_KEY","") if use_serper else "")
+                research=annotate_comparables(research,st.session_state.winners_profile)
                 st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
-                st.session_state.opportunities=build_discover_expansion(enriched,research)
-        if st.session_state.opportunities is not None:
-            opportunities=st.session_state.opportunities
-            valid_count=int(opportunities.validation_status.eq("Validata da fonti fresche").sum()) if not opportunities.empty else 0
+                st.session_state.ideas=build_replication_ideas(enriched,research)
+        if st.session_state.ideas is not None:
+            ideas=st.session_state.ideas
             o1,o2,o3,o4=st.columns(4)
-            o1.metric("Consigli: pubblica ora",int(opportunities.editorial_decision.eq("Pubblica ora").sum()))
-            o2.metric("Da preparare",int(opportunities.editorial_decision.eq("Prepara e valida").sum()))
-            o3.metric("Validati da fonti",valid_count)
-            o4.metric("Potential medio",f"{opportunities.discover_potential.mean():.0f}/100" if not opportunities.empty else "0/100")
-            st.success("Qui non trovi solo dati: ogni card ti dice se pubblicare, cosa pubblicare, con quale titolo e in quale finestra temporale.")
-            st.caption("Shortlist ordinata per potenziale editoriale. Il punteggio è relativo e non garantisce distribuzione su Discover.")
-            actionable=opportunities[~opportunities.editorial_decision.eq("Non prioritario")] if "editorial_decision" in opportunities else opportunities
-            for _,item in actionable.head(6).iterrows(): st.markdown(_opportunity_card(item),unsafe_allow_html=True)
-            with st.expander("Backlog, scoring e proposte escluse"):
-                _show_table(opportunities)
+            o1.metric("Pubblica ora",int(ideas.editorial_decision.eq("Pubblica ora").sum()) if not ideas.empty else 0)
+            o2.metric("Prepara e valida",int(ideas.editorial_decision.eq("Prepara e valida").sum()) if not ideas.empty else 0)
+            o3.metric("Con evidenze esterne",int(ideas.evidence_count.gt(0).sum()) if not ideas.empty else 0)
+            o4.metric("Replication score medio",f"{ideas.replication_score.mean():.0f}/100" if not ideas.empty else "0/100")
+            st.caption("Il punteggio combina tre evidenze reali: performance del vincitore di origine, coperture esterne comparabili e forza dei pattern ricorrenti. È relativo e non garantisce distribuzione su Discover.")
+            for _,item in ideas.head(6).iterrows(): st.markdown(_idea_card(item),unsafe_allow_html=True)
+            with st.expander("Tutte le idee con lo scoring trasparente"):
+                _show_table(ideas)
         if st.session_state.research_df is not None:
             research=st.session_state.research_df
             real=research[research.url.fillna("").ne("")] if "url" in research else research
-            with st.expander(f"Evidenze esterne · {len(real)} fonti reali"):
-                _show_table(research)
+            if "competitor_match_score" in real: real=real[pd.to_numeric(real.competitor_match_score,errors="coerce").fillna(0).ge(min_match)]
+            with st.expander(f"Coperture comparabili · {len(real)} fonti reali sopra la soglia di pertinenza ({min_match}%)"):
+                cols=[c for c in ("source_url","title","publisher","competitor_domain","competitor_match_score","shared_patterns","angle","published_date","url") if c in real.columns]
+                _show_table(real[cols] if cols else real)
             for note in st.session_state.hermes_notes:
                 result=note.get("result")
                 if isinstance(result,str): st.info(result)
@@ -395,20 +412,20 @@ with tabs[3]:
     st.caption("STEP 04 · CONSEGNARE UN BRIEF, NON UN'IDEA")
     st.subheader("Decidi cosa pubblicare e consegna istruzioni alla redazione")
     st.write("Scegli una proposta: il sistema produce titolo, alternative, meta, angolo, struttura, fonti, timing e cautele.")
-    if st.session_state.opportunities is None or st.session_state.opportunities.empty: st.info("Prima genera almeno un territorio nella tab Discover Expansion.")
+    if st.session_state.ideas is None or st.session_state.ideas.empty: st.info("Prima genera la shortlist di idee nella tab 03.")
     else:
-        options=st.session_state.opportunities.head(30)
-        selected=st.selectbox("Consiglio da sviluppare",options.opportunity_id,format_func=lambda oid: f"{options.loc[options.opportunity_id.eq(oid),'editorial_decision'].iloc[0]} · {options.loc[options.opportunity_id.eq(oid),'recommended_headline'].iloc[0]}")
-        selected_opp=options.loc[options.opportunity_id.eq(selected)].iloc[0].to_dict()
-        st.markdown(_opportunity_card(selected_opp),unsafe_allow_html=True)
+        options=st.session_state.ideas.head(30)
+        selected=st.selectbox("Idea da sviluppare",options.idea_id,format_func=lambda iid: f"{options.loc[options.idea_id.eq(iid),'editorial_decision'].iloc[0]} · {options.loc[options.idea_id.eq(iid),'recommended_headline'].iloc[0]}")
+        selected_idea=options.loc[options.idea_id.eq(selected)].iloc[0].to_dict()
+        st.markdown(_idea_card(selected_idea),unsafe_allow_html=True)
         if st.button("Genera brief operativo",type="primary"):
-            row={**selected_opp,"url":selected_opp.get("source_url",""),"topic":selected_opp.get("adjacent_topic",""),"title":selected_opp.get("recommended_headline") or selected_opp.get("adjacent_topic",""),"status":selected_opp.get("editorial_decision",""),"opportunity_score":selected_opp.get("discover_potential",0),"fresh_research_summary":selected_opp.get("differentiation") or selected_opp.get("proposed_argument","")}
+            row={**selected_idea,"url":selected_idea.get("source_url",""),"topic":selected_idea.get("theme",""),"title":selected_idea.get("source_title",""),"keywords":selected_idea.get("entities",""),"status":selected_idea.get("editorial_decision",""),"winning_cluster":f"{selected_idea.get('theme','')} · {selected_idea.get('hook','')}","winning_hook":selected_idea.get("hook",""),"recommended_format":selected_idea.get("format",""),"editorial_advice":selected_idea.get("replication_advice",""),"proposed_argument":f"Replicare il pattern vincente ({selected_idea.get('title_recipe','')}) su uno sviluppo nuovo dello stesso interesse.","discover_potential":selected_idea.get("replication_score",0),"opportunity_score":selected_idea.get("replication_score",0),"fresh_research_summary":selected_idea.get("comparable_titles","") or selected_idea.get("differentiation","")}
             brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
-            brief.update({"source_url":row["url"],"opportunity_id":selected,"discover_potential":selected_opp.get("discover_potential",0),"origin_cluster":selected_opp.get("winning_cluster","")})
-            st.session_state.briefs=[b for b in st.session_state.briefs if b.get("opportunity_id")!=selected]+[brief]
-            st.session_state.approvals=[a for a in st.session_state.approvals if a.get("opportunity_id")!=selected]+[{**a,"source_url":row["url"],"opportunity_id":selected} for a in propose_actions(brief,row)]
-            queue_item={"opportunity_id":selected,"title":brief.get("titolo_scelto") or brief.get("titolo_consigliato",selected_opp.get("adjacent_topic","")),"owner":"Da assegnare","deadline":"","status":"In revisione","published_url":"","predicted_potential":float(selected_opp.get("discover_potential",0) or 0),"actual_clicks":0,"actual_avg_time":0.0,"learning":""}
-            st.session_state.publishing_queue=[q for q in st.session_state.publishing_queue if q.get("opportunity_id")!=selected]+[queue_item]
+            brief.update({"source_url":row["url"],"idea_id":selected,"replication_score":selected_idea.get("replication_score",0),"origin_cluster":row["winning_cluster"],"origin_pattern":selected_idea.get("title_recipe","")})
+            st.session_state.briefs=[b for b in st.session_state.briefs if b.get("idea_id")!=selected]+[brief]
+            st.session_state.approvals=[a for a in st.session_state.approvals if a.get("idea_id")!=selected]+[{**a,"source_url":row["url"],"idea_id":selected} for a in propose_actions(brief,row)]
+            queue_item={"idea_id":selected,"title":brief.get("titolo_scelto") or brief.get("titolo_consigliato",selected_idea.get("recommended_headline","")),"owner":"Da assegnare","deadline":"","status":"In revisione","published_url":"","predicted_potential":float(selected_idea.get("replication_score",0) or 0),"actual_clicks":0,"actual_avg_time":0.0,"learning":""}
+            st.session_state.publishing_queue=[q for q in st.session_state.publishing_queue if q.get("idea_id")!=selected]+[queue_item]
             if error: st.warning(error)
         for i,b in enumerate(st.session_state.briefs):
             label=b.get("titolo_scelto") or b.get("titolo_consigliato") or f"Brief {i+1}"
@@ -425,9 +442,9 @@ with tabs[4]:
     st.write("Qui la previsione incontra i dati reali. Registra pubblicazione e performance per alimentare la prossima analisi.")
     if not st.session_state.publishing_queue: st.info("Le proposte aperte nell'Editorial Studio appariranno qui.")
     else:
-        approved_ids={a.get("opportunity_id") for a in st.session_state.approvals if a.get("stato") in ("Approva","Auto-approvata")}
+        approved_ids={a.get("idea_id") for a in st.session_state.approvals if a.get("stato") in ("Approva","Auto-approvata")}
         for item in st.session_state.publishing_queue:
-            if item.get("opportunity_id") in approved_ids and item.get("status")=="In revisione": item["status"]="Approvato"
+            if item.get("idea_id") in approved_ids and item.get("status")=="In revisione": item["status"]="Approvato"
         published=sum(q.get("status")=="Pubblicato" for q in st.session_state.publishing_queue)
         q1,q2,q3=st.columns(3); q1.metric("In pipeline",len(st.session_state.publishing_queue)); q2.metric("Pubblicati",published); q3.metric("Con feedback",sum(bool(q.get("actual_clicks") or q.get("actual_avg_time")) for q in st.session_state.publishing_queue))
         for i,item in enumerate(st.session_state.publishing_queue):
@@ -444,8 +461,8 @@ with tabs[4]:
                 item["learning"]=st.text_area("Cosa abbiamo imparato",item.get("learning",""),key=f"queue_learning_{i}",placeholder="Quale entità, hook o formato ha contribuito al risultato?")
                 if item["actual_clicks"] or item["actual_avg_time"]:
                     quality="forte" if item["actual_avg_time"]>=15 else "media" if item["actual_avg_time"]>=9 else "debole"
-                    st.success(f"Feedback acquisito: distribuzione {item['actual_clicks']} click · qualità di lettura {quality}. Questo dato può guidare la prossima Audience DNA.")
-        md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client); workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label,"audience_dna":[] if st.session_state.audience_dna is None else st.session_state.audience_dna.to_dict("records"),"discover_expansion":[] if st.session_state.opportunities is None else st.session_state.opportunities.to_dict("records"),"publishing_queue":st.session_state.publishing_queue})
+                    st.success(f"Feedback acquisito: distribuzione {item['actual_clicks']} click · qualità di lettura {quality}. Questo dato conferma o smentisce il pattern replicato: usalo nella prossima estrazione.")
+        md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client); workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label,"winning_patterns":[] if st.session_state.patterns is None else st.session_state.patterns.to_dict("records"),"replication_ideas":[] if st.session_state.ideas is None else st.session_state.ideas.to_dict("records"),"publishing_queue":st.session_state.publishing_queue})
         st.subheader("Consegna ed export")
         st.markdown(md)
         c1,c2,c3=st.columns(3); c1.download_button("Scarica report Markdown",md,"report_ai_content.md","text/markdown"); c2.download_button("Scarica CSV analizzato",st.session_state.analyzed.to_csv(index=False).encode("utf-8-sig"),"contenuti_analizzati.csv","text/csv"); c3.download_button("Scarica workflow JSON",workflow,"workflow.json","application/json")
