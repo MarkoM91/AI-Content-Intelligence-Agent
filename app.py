@@ -89,7 +89,7 @@ st.markdown("""<div class="hero">
 <div class="eyebrow">Editorial intelligence workspace</div>
 <h1>Dai segnali di audience alla prossima decisione editoriale.</h1>
 <p>Un workflow verificabile per capire cosa funziona, leggere il mercato e trasformare le evidenze in contenuti pronti da approvare.</p>
-<div class="pipe"><span>01 · Signals</span><span>02 · Audience DNA</span><span>03 · Discover Expansion</span><span>04 · Editorial Studio</span><span>05 · Publish & Learn</span></div>
+<div class="pipe"><span>01 · Signals</span><span>02 · What Worked</span><span>03 · Next Bets</span><span>04 · Brief & Decide</span><span>05 · Results</span></div>
 </div>
 <div class="trust-strip">
   <div class="trust-item"><b>Evidenze prima delle idee</b>GSC, engagement e fonti reali guidano ogni proposta.</div>
@@ -223,7 +223,7 @@ with st.sidebar:
     llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
     model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
 
-tabs=st.tabs(["01  Signals","02  Audience DNA","03  Discover Expansion","04  Editorial Studio","05  Publish & Learn"])
+tabs=st.tabs(["01  Signals","02  What Worked","03  Next Bets","04  Brief & Decide","05  Results"])
 with tabs[0]:
     st.caption("STEP 01 · RACCOGLI LE EVIDENZE")
     st.subheader("Collega il segnale che vuoi trasformare in decisioni")
@@ -284,8 +284,9 @@ with tabs[0]:
     if st.session_state.short_df is not None: _show_table(st.session_state.short_df.head(50))
 
 with tabs[1]:
-    st.caption("STEP 02 · CAPIRE PERCHÉ HA FUNZIONATO")
-    st.subheader("Ricostruisci il DNA degli interessi che Discover ha premiato")
+    st.caption("STEP 02 · DAL DATO ALLA LETTURA EDITORIALE")
+    st.subheader("Che cosa ha funzionato — e cosa vale la pena ripetere")
+    st.write("Questa vista separa volume, qualità di lettura e pattern ripetibili. L'output non è una classifica: è una diagnosi editoriale.")
     analyzed=st.session_state.analyzed
     if analyzed is None: st.info("Carica o genera i dati nella scheda Dati.")
     else:
@@ -318,18 +319,23 @@ with tabs[1]:
                 d1.metric("Cluster vincenti",dna.interest_cluster.nunique())
                 d2.metric("Entità riconosciute",len({x.strip() for values in dna.entities for x in str(values).split(",") if x.strip()}))
                 d3.metric("Forza media",f"{dna.audience_strength.mean():.0f}/100")
-                st.subheader("Mappa degli interessi validati")
-                _show_table(dna[["source_title","interest_cluster","entities","winning_hook","winning_format","audience_strength","why_it_worked"]])
-        _show_table(analyzed)
-        if st.button("Avvia crawler sulle URL principali"):
+                st.subheader("Verdetto editoriale")
+                for _,signal in dna.sort_values("audience_strength",ascending=False).head(5).iterrows():
+                    st.markdown(f"**{signal.get('interest_cluster','Cluster')} · {float(signal.get('audience_strength',0)):.0f}/100**  \n{signal.get('why_it_worked','')}  \n_Replica: {signal.get('winning_hook','hook da definire')} · Formato: {signal.get('winning_format','da definire')}_")
+                with st.expander("Apri la mappa completa degli interessi"):
+                    _show_table(dna[["source_title","interest_cluster","entities","winning_hook","winning_format","audience_strength","why_it_worked"]])
+        with st.expander("Apri tutte le performance"):
+            _show_table(analyzed)
+        if st.button("Arricchisci i migliori articoli con il crawler"):
             with st.spinner("Crawler in esecuzione..."):
                 enriched,logs=enrich_analyzed_dataframe(analyzed,max_crawl,delay); st.session_state.analyzed=enriched; st.session_state.crawl_log=logs
             st.success("Arricchimento completato.")
         if st.session_state.crawl_log: st.dataframe(pd.DataFrame(st.session_state.crawl_log),use_container_width=True)
 
 with tabs[2]:
-    st.caption("STEP 03 · ESPANDERE L'INTERESSE, NON COPIARE L'ARTICOLO")
-    st.subheader("Scopri territori adiacenti con potenziale Discover")
+    st.caption("STEP 03 · SCEGLIERE LA PROSSIMA SCOMMESSA")
+    st.subheader("Dai pattern vincenti a una shortlist di idee pubblicabili")
+    st.write("Ogni proposta deve conservare l'interesse del cluster originale, aggiungere un fatto nuovo e superare una soglia minima di evidenze.")
     if st.session_state.analyzed is None: st.info("Prima importa i segnali nella tab 01.")
     else:
         if st.session_state.audience_dna is None:
@@ -350,9 +356,9 @@ with tabs[2]:
             if hermes_available(hermes_command): st.success("Hermes Agent rilevato: le evidenze saranno passate all’agente.")
             else: st.warning("Hermes Agent non è installato o non è nel PATH. Il web scraper funzionerà comunque con suggerimenti locali.")
         local_col,web_col=st.columns(2)
-        if local_col.button("Genera mappa di adiacenza"):
+        if local_col.button("Crea shortlist dai segnali"):
             st.session_state.opportunities=build_discover_expansion(st.session_state.analyzed,st.session_state.research_df)
-        if web_col.button("Valida con fonti fresche",type="primary"):
+        if web_col.button("Aggiorna shortlist con il mercato",type="primary"):
             with st.spinner("Espansione dei cluster vincenti e validazione delle adiacenze..."):
                 research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit,serper_api_key=os.getenv("SERPER_API_KEY","") if use_serper else "")
                 st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
@@ -366,9 +372,10 @@ with tabs[2]:
             o3.metric("Validati da fonti",valid_count)
             o4.metric("Potential medio",f"{opportunities.discover_potential.mean():.0f}/100" if not opportunities.empty else "0/100")
             st.success("Qui non trovi solo dati: ogni card ti dice se pubblicare, cosa pubblicare, con quale titolo e in quale finestra temporale.")
-            st.caption("Il potential è relativo e non garantisce distribuzione su Discover.")
-            for _,item in opportunities.head(12).iterrows(): st.markdown(_opportunity_card(item),unsafe_allow_html=True)
-            with st.expander("Scoring trasparente e tutte le opportunità"):
+            st.caption("Shortlist ordinata per potenziale editoriale. Il punteggio è relativo e non garantisce distribuzione su Discover.")
+            actionable=opportunities[~opportunities.editorial_decision.eq("Non prioritario")] if "editorial_decision" in opportunities else opportunities
+            for _,item in actionable.head(6).iterrows(): st.markdown(_opportunity_card(item),unsafe_allow_html=True)
+            with st.expander("Backlog, scoring e proposte escluse"):
                 _show_table(opportunities)
         if st.session_state.research_df is not None:
             research=st.session_state.research_df
@@ -385,15 +392,16 @@ with tabs[2]:
                         st.markdown(_suggestion_card({"article_suggestion":suggestion.get("title","Idea AI"),"audience_reason":suggestion.get("audience_reason",""),"recommended_format":suggestion.get("format",""),"angle":suggestion.get("angle",""),"url":urls[0] if isinstance(urls,list) and urls else "","competitor_match_score":0}),unsafe_allow_html=True)
 
 with tabs[3]:
-    st.caption("STEP 04 · DALL'IDEA ALLA DECISIONE")
-    st.subheader("Trasforma un territorio adiacente in una proposta editoriale")
+    st.caption("STEP 04 · CONSEGNARE UN BRIEF, NON UN'IDEA")
+    st.subheader("Decidi cosa pubblicare e consegna istruzioni alla redazione")
+    st.write("Scegli una proposta: il sistema produce titolo, alternative, meta, angolo, struttura, fonti, timing e cautele.")
     if st.session_state.opportunities is None or st.session_state.opportunities.empty: st.info("Prima genera almeno un territorio nella tab Discover Expansion.")
     else:
         options=st.session_state.opportunities.head(30)
         selected=st.selectbox("Consiglio da sviluppare",options.opportunity_id,format_func=lambda oid: f"{options.loc[options.opportunity_id.eq(oid),'editorial_decision'].iloc[0]} · {options.loc[options.opportunity_id.eq(oid),'recommended_headline'].iloc[0]}")
         selected_opp=options.loc[options.opportunity_id.eq(selected)].iloc[0].to_dict()
         st.markdown(_opportunity_card(selected_opp),unsafe_allow_html=True)
-        if st.button("Apri in Editorial Studio",type="primary"):
+        if st.button("Genera brief operativo",type="primary"):
             row={**selected_opp,"url":selected_opp.get("source_url",""),"topic":selected_opp.get("adjacent_topic",""),"title":selected_opp.get("recommended_headline") or selected_opp.get("adjacent_topic",""),"status":selected_opp.get("editorial_decision",""),"opportunity_score":selected_opp.get("discover_potential",0),"fresh_research_summary":selected_opp.get("differentiation") or selected_opp.get("proposed_argument","")}
             brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
             brief.update({"source_url":row["url"],"opportunity_id":selected,"discover_potential":selected_opp.get("discover_potential",0),"origin_cluster":selected_opp.get("winning_cluster","")})
@@ -406,14 +414,15 @@ with tabs[3]:
             label=b.get("titolo_scelto") or b.get("titolo_consigliato") or f"Brief {i+1}"
             with st.expander(label,expanded=i==len(st.session_state.briefs)-1): _render_editorial_brief(b)
         if st.session_state.approvals:
-            st.subheader("Coda di approvazione umana")
+            st.subheader("Decisioni da prendere")
             for i,a in enumerate(st.session_state.approvals):
                 c1,c2,c3=st.columns([4,1,2]); c1.markdown(f"**{a['azione']}**  \n{a['motivo']} — Responsabile: {a['responsabile']}"); c2.write(f"Rischio: {a['rischio']}")
                 opts=["In attesa","Approva","Modifica","Rifiuta","Auto-approvata"]; a["stato"]=c3.selectbox("Stato",opts,index=opts.index(a["stato"]),key=f"approval_{i}",label_visibility="collapsed")
 
 with tabs[4]:
-    st.caption("STEP 05 · CHIUDERE IL CICLO")
-    st.subheader("Pubblica, misura e restituisci apprendimento al sistema")
+    st.caption("STEP 05 · MISURARE LA SCOMMESSA")
+    st.subheader("Dalla pipeline al risultato: cosa tenere, cambiare o abbandonare")
+    st.write("Qui la previsione incontra i dati reali. Registra pubblicazione e performance per alimentare la prossima analisi.")
     if not st.session_state.publishing_queue: st.info("Le proposte aperte nell'Editorial Studio appariranno qui.")
     else:
         approved_ids={a.get("opportunity_id") for a in st.session_state.approvals if a.get("stato") in ("Approva","Auto-approvata")}
