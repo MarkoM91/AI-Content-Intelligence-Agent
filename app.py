@@ -303,6 +303,8 @@ with tabs[2]:
     else:
         if st.session_state.audience_dna is None:
             st.session_state.audience_dna=build_audience_dna(st.session_state.analyzed)
+        if st.session_state.opportunities is not None and "editorial_advice" not in st.session_state.opportunities.columns:
+            st.session_state.opportunities=build_discover_expansion(st.session_state.analyzed,st.session_state.research_df)
         provider=research_provider
         use_hermes=provider=="Hermes Agent + Web scraper"
         use_llm=provider=="AI (LLM) + Web scraper"
@@ -332,7 +334,8 @@ with tabs[2]:
             o2.metric("Da preparare",int(opportunities.editorial_decision.eq("Prepara e valida").sum()))
             o3.metric("Validati da fonti",valid_count)
             o4.metric("Potential medio",f"{opportunities.discover_potential.mean():.0f}/100" if not opportunities.empty else "0/100")
-            st.caption("Ogni card contiene una decisione, un titolo consigliato, il timing e il motivo. Il potential è relativo e non garantisce distribuzione su Discover.")
+            st.success("Qui non trovi solo dati: ogni card ti dice se pubblicare, cosa pubblicare, con quale titolo e in quale finestra temporale.")
+            st.caption("Il potential è relativo e non garantisce distribuzione su Discover.")
             for _,item in opportunities.head(12).iterrows(): st.markdown(_opportunity_card(item),unsafe_allow_html=True)
             with st.expander("Scoring trasparente e tutte le opportunità"):
                 _show_table(opportunities)
