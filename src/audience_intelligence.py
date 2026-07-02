@@ -103,7 +103,7 @@ def build_audience_dna(analyzed, limit=12):
         entities = extract_entities(title, topic)
         category = str(source.get("editorial_theme") or source.get("category") or "generale")
         content_format = infer_format(title, source.get("intent", ""))
-        tokens = _words(f"{title} {topic}")[:7]
+        tokens = list(dict.fromkeys(_words(f"{title} {topic}")))[:7]
         cluster = f"{category} · {hook}"
         rows.append({
             "source_url": source.get("url", ""), "source_title": title, "interest_cluster": cluster,
@@ -122,6 +122,53 @@ def _fresh_evidence(research_df, source_url):
     subset = research_df[research_df.source_url.eq(source_url)].copy()
     if "url" in subset: subset = subset[subset.url.fillna("").ne("")]
     return subset
+
+
+def _recommended_headline(seed, adjacency_type, adjacent_topic):
+    subject = str(seed.primary_topic or seed.source_title).strip().title()
+    entity = str(seed.entities or "").split(",")[0].strip()
+    lead = entity if entity and len(entity) > 2 else subject
+    templates = {
+        "entità adiacente": f"{lead}, chi sono gli altri protagonisti e le organizzazioni da seguire",
+        "sviluppo": f"{subject}, cosa è cambiato nelle ultime ore e cosa succede adesso",
+        "argomento": f"{subject}, le conseguenze e le domande a cui nessuno ha ancora risposto",
+        "entità parallela": f"{lead}, chi sono gli altri protagonisti che stanno cambiando lo scenario",
+        "struttura nascosta": f"{subject}, chi controlla davvero società, proprietà e interessi",
+        "confronto": f"{subject}, numeri a confronto: chi guadagna di più e perché",
+        "sviluppo seriale": f"{subject}, la nuova prova che può cambiare la ricostruzione",
+        "protagonista adiacente": f"{lead}, il ruolo del protagonista rimasto finora sullo sfondo",
+        "ricostruzione": f"{subject}, la timeline completa e i passaggi ancora senza risposta",
+        "conseguenza": f"{subject}: chi perde, chi guadagna e cosa cambia adesso",
+        "scenario": f"{subject}, i prossimi scenari e la decisione che può cambiare tutto",
+        "precedente": f"{subject}, i precedenti che spiegano come potrebbe finire",
+        "segmento adiacente": f"{subject}: cosa cambia davvero per famiglie, imprese e risparmiatori",
+        "decisione pratica": f"{subject}, cosa conviene fare adesso e gli errori da evitare",
+        "comparazione": f"{subject}: vincitori, penalizzati e differenze che contano",
+        "dato nuovo": f"{subject}, i nuovi numeri spiegano cosa sta succedendo davvero",
+        "voce autorevole": f"{subject}, gli esperti a confronto su rischi e opportunità",
+        "caso concreto": f"{subject}, chi lo sta già facendo e con quali risultati",
+        "aggiornamento": f"{subject}, nuove regole e date: cosa bisogna sapere ora",
+        "segmento": f"{subject}, la guida per chi rischia di essere escluso",
+        "errore da evitare": f"{subject}, gli errori più comuni e quanto possono costare",
+    }
+    return templates.get(adjacency_type, f"{subject}: {str(adjacent_topic).strip()}")
+
+
+def _editorial_advice(score, evidence_count, audience, headline, argument):
+    if score >= 72 and evidence_count >= 2:
+        decision, urgency = "Pubblica ora", "Entro 24 ore"
+        rationale = "Il cluster è forte e dispone già di un trigger fresco confermato da più fonti."
+    elif score >= 66:
+        decision, urgency = "Prepara e valida", "Entro 24-48 ore"
+        rationale = "L'adiacenza con l'audience è promettente, ma serve confermare un fatto nuovo prima di pubblicare."
+    elif score >= 56:
+        decision, urgency = "Monitora", "Rivaluta entro 72 ore"
+        rationale = "Il tema è coerente, ma oggi non ha abbastanza forza o freschezza per una priorità alta."
+    else:
+        decision, urgency = "Non prioritario", "Nessuna urgenza"
+        rationale = "Il legame con i contenuti vincenti è troppo debole rispetto alle alternative disponibili."
+    advice = f"{decision}: sviluppa «{headline}». {argument} {rationale}"
+    return decision, urgency, advice
 
 
 def build_discover_expansion(analyzed, research_df=None, limit=12):
@@ -148,12 +195,17 @@ def build_discover_expansion(analyzed, research_df=None, limit=12):
             format_fit = max(60.0, 90.0 - index * 7)
             novelty = min(95.0, 68.0 + index * 10 - min(evidence_count, 5) * 2)
             score = audience * .30 + semantic * .25 + entity * .15 + freshness * .15 + format_fit * .10 + novelty * .05
+            specific_topic = f"{str(seed.primary_topic).strip()}: {adjacent_topic}"
+            headline = _recommended_headline(seed, adjacency_type, adjacent_topic)
+            decision, urgency, advice = _editorial_advice(score, evidence_count, audience, headline, argument)
             oid = hashlib.sha1(f"{seed.source_url}|{adjacency_type}|{adjacent_topic}".encode("utf-8")).hexdigest()[:10]
             opportunities.append({
                 "opportunity_id": oid, "source_url": seed.source_url, "source_title": seed.source_title,
                 "winning_cluster": seed.interest_cluster, "winning_hook": hook, "entities": seed.entities,
-                "adjacency_type": adjacency_type, "adjacent_topic": adjacent_topic,
+                "adjacency_type": adjacency_type, "adjacent_topic": specific_topic,
                 "proposed_argument": argument, "recommended_format": seed.winning_format,
+                "editorial_decision": decision, "urgency": urgency, "recommended_headline": headline,
+                "editorial_advice": advice, "differentiation": f"Non replicare «{seed.source_title}»: {argument}",
                 "audience_affinity": round(audience, 1), "semantic_adjacency": round(semantic, 1),
                 "entity_affinity": round(entity, 1), "freshness_score": round(freshness, 1),
                 "format_fit": round(format_fit, 1), "editorial_novelty": round(novelty, 1),

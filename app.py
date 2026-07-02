@@ -116,16 +116,18 @@ def _suggestion_card(item):
             f'<p class="sugg-reason">{reason}</p><div class="sugg-meta">{meta}{link}</div></div>')
 
 def _opportunity_card(item):
-    title=_html.escape(str(item.get("adjacent_topic","Territorio adiacente")))
-    argument=_html.escape(str(item.get("proposed_argument","")))
+    title=_html.escape(str(item.get("recommended_headline") or item.get("adjacent_topic","Territorio adiacente")))
+    argument=_html.escape(str(item.get("editorial_advice") or item.get("proposed_argument","")))
     cluster=_html.escape(str(item.get("winning_cluster","")))
     status=_html.escape(str(item.get("validation_status","")))
+    decision=_html.escape(str(item.get("editorial_decision","Da valutare")))
+    urgency=_html.escape(str(item.get("urgency","")))
     score=float(item.get("discover_potential",0) or 0)
     color="#176b52" if score>=70 else "#a76532" if score>=55 else "#66736e"
     return (f'<div class="sugg-card"><div class="sugg-head"><h4>{title}</h4>'
             f'<span class="badge" style="background:{color}18;color:{color}">Potential {score:.0f}</span></div>'
-            f'<p class="sugg-reason">{argument}</p><div class="sugg-meta"><span>Origine · {cluster}</span>'
-            f'<span>Adiacenza · {_html.escape(str(item.get("adjacency_type","")))}</span><span>{status}</span></div></div>')
+            f'<p class="sugg-reason"><b>{decision}</b> · {argument}</p><div class="sugg-meta"><span>Quando · {urgency}</span>'
+            f'<span>Origine · {cluster}</span><span>Adiacenza · {_html.escape(str(item.get("adjacency_type","")))}</span><span>{status}</span></div></div>')
 
 def _show_table(df):
     """Tabella con formattazione ricca: barre per gli score, CTR in %,
@@ -325,10 +327,12 @@ with tabs[2]:
         if st.session_state.opportunities is not None:
             opportunities=st.session_state.opportunities
             valid_count=int(opportunities.validation_status.eq("Validata da fonti fresche").sum()) if not opportunities.empty else 0
-            o1,o2,o3=st.columns(3)
-            o1.metric("Territori adiacenti",len(opportunities)); o2.metric("Validati da fonti",valid_count)
-            o3.metric("Potential medio",f"{opportunities.discover_potential.mean():.0f}/100" if not opportunities.empty else "0/100")
-            st.caption("Il punteggio stima una probabilità editoriale relativa, non garantisce distribuzione su Discover.")
+            o1,o2,o3,o4=st.columns(4)
+            o1.metric("Consigli: pubblica ora",int(opportunities.editorial_decision.eq("Pubblica ora").sum()))
+            o2.metric("Da preparare",int(opportunities.editorial_decision.eq("Prepara e valida").sum()))
+            o3.metric("Validati da fonti",valid_count)
+            o4.metric("Potential medio",f"{opportunities.discover_potential.mean():.0f}/100" if not opportunities.empty else "0/100")
+            st.caption("Ogni card contiene una decisione, un titolo consigliato, il timing e il motivo. Il potential è relativo e non garantisce distribuzione su Discover.")
             for _,item in opportunities.head(12).iterrows(): st.markdown(_opportunity_card(item),unsafe_allow_html=True)
             with st.expander("Scoring trasparente e tutte le opportunità"):
                 _show_table(opportunities)
@@ -352,11 +356,11 @@ with tabs[3]:
     if st.session_state.opportunities is None or st.session_state.opportunities.empty: st.info("Prima genera almeno un territorio nella tab Discover Expansion.")
     else:
         options=st.session_state.opportunities.head(30)
-        selected=st.selectbox("Territorio da sviluppare",options.opportunity_id,format_func=lambda oid: f"{options.loc[options.opportunity_id.eq(oid),'adjacent_topic'].iloc[0]} · potential {options.loc[options.opportunity_id.eq(oid),'discover_potential'].iloc[0]:.0f}")
+        selected=st.selectbox("Consiglio da sviluppare",options.opportunity_id,format_func=lambda oid: f"{options.loc[options.opportunity_id.eq(oid),'editorial_decision'].iloc[0]} · {options.loc[options.opportunity_id.eq(oid),'recommended_headline'].iloc[0]}")
         selected_opp=options.loc[options.opportunity_id.eq(selected)].iloc[0].to_dict()
         st.markdown(_opportunity_card(selected_opp),unsafe_allow_html=True)
         if st.button("Apri in Editorial Studio",type="primary"):
-            row={**selected_opp,"url":selected_opp.get("source_url",""),"topic":selected_opp.get("adjacent_topic",""),"title":selected_opp.get("adjacent_topic",""),"status":selected_opp.get("validation_status",""),"opportunity_score":selected_opp.get("discover_potential",0),"fresh_research_summary":selected_opp.get("proposed_argument","")}
+            row={**selected_opp,"url":selected_opp.get("source_url",""),"topic":selected_opp.get("adjacent_topic",""),"title":selected_opp.get("recommended_headline") or selected_opp.get("adjacent_topic",""),"status":selected_opp.get("editorial_decision",""),"opportunity_score":selected_opp.get("discover_potential",0),"fresh_research_summary":selected_opp.get("differentiation") or selected_opp.get("proposed_argument","")}
             brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
             brief.update({"source_url":row["url"],"opportunity_id":selected,"discover_potential":selected_opp.get("discover_potential",0),"origin_cluster":selected_opp.get("winning_cluster","")})
             st.session_state.briefs=[b for b in st.session_state.briefs if b.get("opportunity_id")!=selected]+[brief]
