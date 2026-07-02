@@ -129,6 +129,37 @@ def _opportunity_card(item):
             f'<p class="sugg-reason"><b>{decision}</b> · {argument}</p><div class="sugg-meta"><span>Quando · {urgency}</span>'
             f'<span>Origine · {cluster}</span><span>Adiacenza · {_html.escape(str(item.get("adjacency_type","")))}</span><span>{status}</span></div></div>')
 
+def _render_editorial_brief(brief):
+    decision=str(brief.get("consiglio_editoriale") or "Da valutare")
+    note=str(brief.get("nota_editoriale") or brief.get("perche_adesso") or "")
+    title=str(brief.get("titolo_scelto") or brief.get("titolo_consigliato") or "Titolo da definire")
+    alternatives=brief.get("titoli_alternativi") or brief.get("varianti_titolo") or []
+    meta=str(brief.get("meta_description") or "")
+    st.markdown(f"### {decision}")
+    if note: st.info(note)
+    st.markdown(f"**Titolo scelto · {len(title)} caratteri**\n\n{title}")
+    if brief.get("perche_questo_titolo"): st.caption(str(brief["perche_questo_titolo"]))
+    if alternatives:
+        st.markdown("**Alternative di titolo**")
+        for index,alternative in enumerate(alternatives[:5],1):
+            alternative=str(alternative)
+            st.markdown(f"{index}. {alternative} · `{len(alternative)} caratteri`")
+    if meta: st.markdown(f"**Meta description · {len(meta)} caratteri**\n\n{meta}")
+    c1,c2,c3=st.columns(3)
+    c1.markdown(f"**Timing**\n\n{brief.get('timing','Da definire')}")
+    c2.markdown(f"**Formato**\n\n{brief.get('formato_suggerito','Da definire')}")
+    c3.markdown(f"**Focus**\n\n{brief.get('focus_query') or brief.get('target','Da definire')}")
+    st.markdown(f"**Angolo editoriale**\n\n{brief.get('angolo','Da definire')}")
+    st.markdown(f"**Cosa aggiunge rispetto agli altri**\n\n{brief.get('differenziazione','Da definire')}")
+    sections=[("Elementi nuovi da trovare","elementi_nuovi"),("Struttura consigliata","struttura_articolo"),("Fonti e verifiche","fonti_da_verificare"),("Azioni della redazione","azioni_consigliate")]
+    for label,key in sections:
+        values=brief.get(key) or (brief.get("outline") if key=="struttura_articolo" else [])
+        if values:
+            st.markdown(f"**{label}**")
+            for value in values: st.markdown(f"- {value}")
+    if brief.get("link_interno"): st.markdown(f"**Link interno suggerito**\n\n{brief['link_interno']}")
+    if brief.get("rischi_note"): st.warning(f"Rischi e cautele: {brief['rischi_note']}")
+
 def _show_table(df):
     """Tabella con formattazione ricca: barre per gli score, CTR in %,
     URL cliccabili. Applica solo le colonne presenti."""
@@ -368,11 +399,12 @@ with tabs[3]:
             brief.update({"source_url":row["url"],"opportunity_id":selected,"discover_potential":selected_opp.get("discover_potential",0),"origin_cluster":selected_opp.get("winning_cluster","")})
             st.session_state.briefs=[b for b in st.session_state.briefs if b.get("opportunity_id")!=selected]+[brief]
             st.session_state.approvals=[a for a in st.session_state.approvals if a.get("opportunity_id")!=selected]+[{**a,"source_url":row["url"],"opportunity_id":selected} for a in propose_actions(brief,row)]
-            queue_item={"opportunity_id":selected,"title":brief.get("titolo_consigliato",selected_opp.get("adjacent_topic","")),"owner":"Da assegnare","deadline":"","status":"In revisione","published_url":"","predicted_potential":float(selected_opp.get("discover_potential",0) or 0),"actual_clicks":0,"actual_avg_time":0.0,"learning":""}
+            queue_item={"opportunity_id":selected,"title":brief.get("titolo_scelto") or brief.get("titolo_consigliato",selected_opp.get("adjacent_topic","")),"owner":"Da assegnare","deadline":"","status":"In revisione","published_url":"","predicted_potential":float(selected_opp.get("discover_potential",0) or 0),"actual_clicks":0,"actual_avg_time":0.0,"learning":""}
             st.session_state.publishing_queue=[q for q in st.session_state.publishing_queue if q.get("opportunity_id")!=selected]+[queue_item]
             if error: st.warning(error)
         for i,b in enumerate(st.session_state.briefs):
-            with st.expander(b.get("titolo_consigliato",f"Brief {i+1}"),expanded=i==len(st.session_state.briefs)-1): st.json(b)
+            label=b.get("titolo_scelto") or b.get("titolo_consigliato") or f"Brief {i+1}"
+            with st.expander(label,expanded=i==len(st.session_state.briefs)-1): _render_editorial_brief(b)
         if st.session_state.approvals:
             st.subheader("Coda di approvazione umana")
             for i,a in enumerate(st.session_state.approvals):
