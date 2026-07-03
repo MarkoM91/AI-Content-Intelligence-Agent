@@ -14,13 +14,11 @@ streamlit run app.py
 
 Nessuna API a pagamento è necessaria: `Demo CSV`, `Piano locale` e `Regole locali` completano il percorso offline. Google News RSS e feed personalizzati sono gratuiti. OpenAI e Anthropic sono opzionali tramite `.env`; in caso di errore il sistema torna alle regole locali. Tavily e Brave sono evoluzioni future dichiarate.
 
-## Demo
+## Demo — tre schede, tre domande
 
-1. Caricare la demo in **01 Signals**.
-2. In **02 What Worked** avviare il crawler (opzionale, migliora i titoli reali) ed estrarre i pattern ricorrenti: ogni pattern mostra prevalenza tra i vincitori, baseline sul resto del sito e lift.
-3. In **03 Next Bets** cercare contenuti comparabili sul web (Piano locale o Google News RSS senza API): le fonti esterne vengono annotate con i pattern che condividono con i vincitori e alimentano una shortlist di idee con replication score trasparente.
-4. In **04 Brief & Decide** trasformare un'idea in brief operativo (il titolo applica i pattern osservati) e gestire la coda approvazioni.
-5. In **05 Results** registrare pubblicazione e feedback, poi esportare Markdown, CSV, ricerca e workflow JSON.
+1. **01 Cosa ha funzionato** — caricare demo, export engagement o GSC: vincitori e pattern ricorrenti vengono calcolati automaticamente (prevalenza tra i vincitori, baseline sul resto del sito, lift). Il crawler opzionale arricchisce i titoli reali e ricalcola i pattern.
+2. **02 Cosa pubblicare** — la shortlist di idee replicabili è già pronta; l'unico passaggio manuale è la validazione con fonti fresche dal web (Google News RSS senza API). Ogni card ha il proprio bottone «Sviluppa il brief».
+3. **03 Brief e consegna** — brief completi con stato di produzione (revisione → approvato → pubblicato), coda approvazioni per le azioni esterne ed export Markdown/CSV/JSON.
 
 I dati restano in `st.session_state`: cambiare da Regole locali ad AI con LLM non azzera l'analisi.
 

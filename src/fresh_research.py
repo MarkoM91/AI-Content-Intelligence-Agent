@@ -298,11 +298,15 @@ def select_seeds(analyzed, strategy="Top per click (cosa funziona)", limit=5):
     key="opportunity_score" if "opportunity_score" in d else d.columns[0]
     return d.sort_values(key,ascending=False).head(limit)
 
-def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d",include_reddit=True,serper_api_key=""):
+def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_domain="",feed_urls=None,max_topics=5,audience_context="",use_hermes=False,hermes_command="hermes",use_llm=False,llm_provider="OpenAI",llm_model="",seed_strategy="Top per click (cosa funziona)",freshness="7d",include_reddit=True,serper_api_key="",progress=None):
     rows=[]; out=analyzed.copy(); feed_urls=feed_urls or []; hermes_notes=[]
     window=str(freshness or "7d").strip()
-    for _,source_series in select_seeds(out,seed_strategy,max_topics).iterrows():
+    seeds=select_seeds(out,seed_strategy,max_topics)
+    for seed_index,(_,source_series) in enumerate(seeds.iterrows()):
         source=source_series.to_dict(); seen=set(); source_rows=[]
+        if progress:
+            try: progress(seed_index+1,len(seeds),seed_label(source))
+            except Exception: pass
         plan=llm_plan_research(source,llm_provider,llm_model) if use_llm else None
         seed_format,queries=(plan if plan else ("",build_queries(source)))
         topic=str(source.get("topic","") or "").strip()
