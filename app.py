@@ -151,7 +151,11 @@ def _render_editorial_brief(brief):
     c3.markdown(f"**Focus**\n\n{brief.get('focus_query') or brief.get('target','Da definire')}")
     st.markdown(f"**Angolo editoriale**\n\n{brief.get('angolo','Da definire')}")
     st.markdown(f"**Cosa aggiunge rispetto agli altri**\n\n{brief.get('differenziazione','Da definire')}")
-    sections=[("Elementi nuovi da trovare","elementi_nuovi"),("Struttura consigliata","struttura_articolo"),("Fonti e verifiche","fonti_da_verificare"),("Azioni della redazione","azioni_consigliate")]
+    bozza=brief.get("bozza_articolo") or []
+    if bozza:
+        st.markdown("**Bozza pronta per il CMS** — scritta solo dai fatti raccolti dalle fonti web")
+        for paragraph in bozza: st.markdown(str(paragraph))
+    sections=[("Scelte editoriali","scelte_editoriali"),("Elementi nuovi da trovare","elementi_nuovi"),("Struttura consigliata","struttura_articolo"),("Fonti e verifiche","fonti_da_verificare"),("Azioni della redazione","azioni_consigliate")]
     for label,key in sections:
         values=brief.get(key) or (brief.get("outline") if key=="struttura_articolo" else [])
         if values:
@@ -159,6 +163,9 @@ def _render_editorial_brief(brief):
             for value in values: st.markdown(f"- {value}")
     if brief.get("link_interno"): st.markdown(f"**Link interno suggerito**\n\n{brief['link_interno']}")
     if brief.get("rischi_note"): st.warning(f"Rischi e cautele: {brief['rischi_note']}")
+    st.markdown("**Title e meta per il CMS**")
+    st.code(f"Title ({len(title)} caratteri):\n{title}\n\nMeta description ({len(meta)} caratteri):\n{meta or 'Da definire'}",language=None)
+    if brief.get("stima_potenziale"): st.caption(f"Stima: {brief['stima_potenziale']}")
 
 def _show_table(df):
     """Tabella con formattazione ricca: barre per gli score, CTR in %,
@@ -236,8 +243,21 @@ with st.sidebar:
         delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
 
 def _develop_idea(idea):
-    """Trasforma un'idea in brief operativo con coda di approvazione."""
+    """Trasforma un'idea in brief operativo con coda di approvazione.
+    Passa al motore anche gli estratti delle fonti web, così il pezzo
+    può essere scritto solo dai fatti raccolti."""
     iid=idea["idea_id"]
+    materiale=""
+    research=st.session_state.research_df
+    if research is not None and not getattr(research,"empty",True) and "source_url" in research.columns:
+        ev=research[research.source_url.eq(idea.get("source_url","")) & research.url.fillna("").ne("")]
+        if "competitor_match_score" in ev.columns: ev=ev.sort_values("competitor_match_score",ascending=False)
+        parts=[]
+        for _,r in ev.head(4).iterrows():
+            text=str(r.get("scraped_excerpt") or r.get("snippet") or "").strip()[:1500]
+            if text: parts.append(f"FONTE: {r.get('title','')} ({r.get('competitor_domain','')}, {r.get('published_date','')})\n{text}")
+        materiale="\n\n".join(parts)[:6000]
+    idea={**idea,"materiale_fonti":materiale}
     row={**idea,"url":idea.get("source_url",""),"topic":idea.get("theme",""),"title":idea.get("source_title",""),"keywords":idea.get("entities",""),"status":idea.get("editorial_decision",""),"winning_cluster":f"{idea.get('theme','')} · {idea.get('hook','')}","winning_hook":idea.get("hook",""),"recommended_format":idea.get("format",""),"editorial_advice":idea.get("replication_advice",""),"proposed_argument":f"Replicare il pattern vincente ({idea.get('title_recipe','')}) su uno sviluppo nuovo dello stesso interesse.","discover_potential":idea.get("replication_score",0),"opportunity_score":idea.get("replication_score",0),"fresh_research_summary":idea.get("comparable_titles","") or idea.get("differentiation","")}
     brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
     brief.update({"source_url":row["url"],"idea_id":iid,"replication_score":idea.get("replication_score",0),"origin_cluster":row["winning_cluster"],"origin_pattern":idea.get("title_recipe",""),"stato_produzione":"In revisione","owner":"Da assegnare","deadline":"","published_url":""})
@@ -321,7 +341,8 @@ with tabs[0]:
             d1,d2,d3=st.columns(3)
             d1.metric("Vincitori analizzati",len(profile))
             d2.metric("Pattern ricorrenti",0 if patterns is None or patterns.empty else len(patterns))
-            d3.metric("Metrica di successo",{"clicks_current":"Click Discover","engagement_score":"Engagement","opportunity_score":"Opportunità"}.get(st.session_state.perf_metric,st.session_state.perf_metric))
+            d3.metric("Metrica di successo",{"ctr_current":"CTR Discover","clicks_current":"Click Discover","engagement_score":"Engagement","opportunity_score":"Opportunità"}.get(st.session_state.perf_metric,st.session_state.perf_metric))
+            if st.session_state.perf_metric=="ctr_current": st.caption("Vincitori = CTR più alto tra le pagine sopra la mediana di impression: un CTR alto su poche impression non è un successo replicabile.")
             if patterns is not None and not patterns.empty:
                 st.subheader("Il verdetto: cosa si ripete nei contenuti vincenti")
                 for _,p in patterns.head(6).iterrows():
@@ -363,19 +384,33 @@ with tabs[1]:
         use_llm=provider=="AI (LLM) + Web scraper"
         use_serper=provider=="Serper + Google News"
         if provider in ("Hermes Agent + Web scraper","AI (LLM) + Web scraper","Google News RSS","Serper + Google News"): provider="Web scraper + Google News"
-        st.markdown("Il sistema naviga il web — Google News, i siti dei competitor, i feed di settore — legge le pagine e trova **contenuti adiacenti** agli articoli che hanno già generato traffico: stesso interesse del pubblico, sviluppo nuovo.")
+        st.markdown("Scegli un articolo che ha funzionato: il sistema naviga il web — Google News, i siti dei competitor, i feed di settore — legge le pagine e trova **contenuti adiacenti**: stesso interesse del pubblico, sviluppo nuovo.")
         if use_hermes:
             from src.fresh_research import hermes_available
             if not hermes_available(hermes_command): st.caption("Hermes Agent non trovato nel PATH: la ricerca funzionerà comunque con lo scoring locale.")
+        winners=st.session_state.winners_profile
+        top25=winners.head(25) if winners is not None and not winners.empty else None
+        AUTO_SEED="__auto__"
+        seed_labels={AUTO_SEED:"I migliori 5 (automatico)"}
+        if top25 is not None:
+            for _,w in top25.iterrows():
+                value=f"{w.performance*100:.1f}% CTR" if st.session_state.perf_metric=="ctr_current" else f"{int(w.performance)} {'click' if st.session_state.perf_metric=='clicks_current' else 'punti'}"
+                seed_labels[w.url]=f"{str(w.title)[:80]} · {value}"
+        selected_seed=st.selectbox("Articolo che ha funzionato (top 25)",list(seed_labels),format_func=lambda v: seed_labels.get(v,v))
         if st.button("Cerca sul web i contenuti adiacenti",type="primary"):
             with st.status("Navigo il web alla ricerca di contenuti adiacenti...",expanded=False) as _status:
                 def _progress(done,total,label): _status.update(label=f"({done}/{total}) Cerco e leggo le coperture adiacenti a «{label}»...")
-                research,enriched,notes=add_research_to_dataframe(st.session_state.analyzed,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit,serper_api_key=os.getenv("SERPER_API_KEY","") if use_serper else "",progress=_progress)
+                base=st.session_state.analyzed
+                target=base if selected_seed==AUTO_SEED else base[base.url.eq(selected_seed)]
+                research,_,notes=add_research_to_dataframe(target,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],max_topics=5 if selected_seed==AUTO_SEED else 1,audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit,serper_api_key=os.getenv("SERPER_API_KEY","") if use_serper else "",progress=_progress)
+                old=st.session_state.research_df
+                if old is not None and not getattr(old,"empty",True) and "source_url" in research and "source_url" in old:
+                    research=pd.concat([old[~old.source_url.isin(research.source_url.unique())],research],ignore_index=True)
                 research=annotate_comparables(research,st.session_state.winners_profile)
-                st.session_state.research_df=research; st.session_state.analyzed=enriched; st.session_state.hermes_notes=notes
-                st.session_state.ideas=build_replication_ideas(enriched,research)
+                st.session_state.research_df=research; st.session_state.hermes_notes=notes
+                st.session_state.ideas=build_replication_ideas(st.session_state.analyzed,research)
                 found=len(research[research.url.fillna("").ne("")]) if research is not None and not research.empty and "url" in research else 0
-                _status.update(label=f"Fatto: {found} contenuti adiacenti trovati e letti.",state="complete")
+                _status.update(label=f"Fatto: {found} contenuti adiacenti in archivio per questa sessione.",state="complete")
         ideas=st.session_state.ideas
         research=st.session_state.research_df
         briefed={b.get("idea_id") for b in st.session_state.briefs}
@@ -391,7 +426,9 @@ with tabs[1]:
             ready=int(ideas.editorial_decision.isin(["Pubblica ora","Prepara e valida"]).sum())
             m1,m2,m3=st.columns(3)
             m1.metric("Contenuti adiacenti trovati",len(real)); m2.metric("Proposte pronte",ready); m3.metric("Finestra fonti",freshness_label)
-            for _,item in ideas.head(5).iterrows():
+            researched=set(research[research.url.fillna("").ne("")].source_url.unique()) if "source_url" in research.columns and "url" in research.columns else set()
+            groups=ideas[ideas.source_url.isin(researched)] if researched else ideas.head(5)
+            for _,item in groups.head(8).iterrows():
                 st.markdown("---")
                 st.markdown(f"**Ha funzionato da te** · {item.source_title}")
                 adjacent=real[real.source_url.eq(item.source_url)].head(3) if "source_url" in real.columns else real.iloc[0:0]
@@ -423,9 +460,10 @@ with tabs[1]:
         else: st.info("Nessuna proposta generata: servono più segnali nella scheda 01.")
 
 with tabs[2]:
-    st.caption("STEP 03 · DAL BRIEF ALLA REDAZIONE")
-    st.subheader("Brief operativi, approvazioni e consegna")
-    if not st.session_state.briefs: st.info("Sviluppa un'idea nella scheda 02: il brief completo apparirà qui.")
+    st.caption("STEP 03 · PUBBLICA SUBITO")
+    st.subheader("Il pezzo pronto: titolo scelto, bozza, title e meta per il CMS")
+    st.write("Con il motore AI la bozza viene scritta solo dai fatti raccolti dalle fonti web, con titoli alternativi in caratteri contati e le scelte editoriali motivate. Le azioni esterne restano in approvazione umana.")
+    if not st.session_state.briefs: st.info("Sviluppa un'idea nella scheda 02: il pezzo completo apparirà qui.")
     else:
         publish_ok={a.get("idea_id") for a in st.session_state.approvals if str(a.get("azione","")).startswith("Pubblicare") and a.get("stato") in ("Approva","Auto-approvata")}
         for b in st.session_state.briefs:

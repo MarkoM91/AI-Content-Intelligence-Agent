@@ -78,17 +78,27 @@ def infer_tone(title):
 
 
 def _perf_metric(analyzed):
-    for col in ("clicks_current", "engagement_score", "opportunity_score"):
+    if "ctr_current" in analyzed and "impressions_current" in analyzed:
+        ctr = pd.to_numeric(analyzed.ctr_current, errors="coerce").fillna(0)
+        imp = pd.to_numeric(analyzed.impressions_current, errors="coerce").fillna(0)
+        if imp.sum() > 0 and ctr.nunique() > 1:
+            return "ctr_current"
+    for col in ("engagement_score", "clicks_current", "opportunity_score"):
         if col in analyzed and pd.to_numeric(analyzed[col], errors="coerce").fillna(0).sum() > 0:
             return col
     return "opportunity_score" if "opportunity_score" in analyzed else analyzed.columns[0]
 
 
-def select_winners(analyzed, top_share=.25, min_n=5, max_n=15):
-    """Vincitori = quota alta della finestra selezionata, ordinati per performance reale."""
+def select_winners(analyzed, top_share=.25, min_n=5, max_n=25):
+    """Vincitori = quota alta della finestra selezionata, ordinati per performance reale.
+    Con metrica CTR le pagine sotto la mediana di impression sono escluse dal podio:
+    un CTR alto su poche impression non è un successo replicabile."""
     d = analyzed.copy()
     metric = _perf_metric(d)
     d["_perf"] = pd.to_numeric(d.get(metric), errors="coerce").fillna(0)
+    if metric == "ctr_current" and "impressions_current" in d:
+        imp = pd.to_numeric(d.impressions_current, errors="coerce").fillna(0)
+        d.loc[imp < max(100.0, float(imp.median())), "_perf"] = 0.0
     d = d.sort_values("_perf", ascending=False).reset_index(drop=True)
     k = min(len(d), max(min(min_n, len(d)), min(int(round(len(d) * top_share)), max_n)))
     return d.head(k), d.iloc[k:], metric
@@ -235,7 +245,8 @@ def build_replication_ideas(analyzed, research_df=None, limit=12):
             decision, urgency = "Monitora", "Rivaluta entro 72 ore"
         lead_pattern = recipe_items[0] if recipe_items else w.hook
         metric_label = {"clicks_current": "click Discover", "engagement_score": "punti engagement", "opportunity_score": "punti opportunità"}.get(metric, metric)
-        advice = (f"«{w.title[:70]}» ha già funzionato ({int(w.performance)} {metric_label}). "
+        value = f"{w.performance * 100:.1f}% di CTR" if metric == "ctr_current" else f"{int(w.performance)} {metric_label}"
+        advice = (f"«{w.title[:70]}» ha già funzionato ({value}). "
                   f"Replica il pattern [{lead_pattern}] su uno sviluppo fresco dello stesso interesse"
                   + (f", confermato da {evidence_count} coperture esterne." if evidence_count else "; serve prima un trigger verificabile."))
         ideas.append({
