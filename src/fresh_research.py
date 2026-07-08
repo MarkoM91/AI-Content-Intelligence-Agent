@@ -144,7 +144,7 @@ def scrape_article(url):
         title=(soup.find("meta",property="og:title") or {}).get("content","")
         if not title and soup.title: title=soup.title.get_text(" ",strip=True)
         paragraphs=[p.get_text(" ",strip=True) for p in soup.select("article p, main p, p") if len(p.get_text(" ",strip=True))>70]
-        return {"scraped_title":title[:300],"scraped_excerpt":" ".join(paragraphs[:4])[:1800],
+        return {"scraped_title":title[:300],"scraped_excerpt":" ".join(paragraphs[:8])[:3200],
                 "scrape_status":f"OK ({response.status_code})","resolved_url":response.url}
     except Exception as exc:
         return {"scraped_title":"","scraped_excerpt":"","scrape_status":f"Errore: {str(exc)[:180]}","resolved_url":url}
@@ -372,8 +372,8 @@ def add_research_to_dataframe(analyzed,provider="Web scraper + Google News",own_
                 note=refine_with_llm(source,real_frame,audience_context,llm_provider,llm_model); hermes_notes.append({"source_url":source["url"],"result":note})
         rows.extend(source_rows)
     research=pd.DataFrame(rows).reindex(columns=RESULT_COLUMNS)
-    if not research.empty:
-        research=research.sort_values(["source_url","competitor_match_score"],ascending=[True,False]).drop_duplicates(["source_url","url","title"])
+    if research.empty: return research,out,hermes_notes
+    research=research.sort_values(["source_url","competitor_match_score"],ascending=[True,False]).drop_duplicates(["source_url","url","title"])
     for url in out.url:
         subset=research[research.source_url.eq(url)] if not research.empty else research
         out.loc[out.url.eq(url),"fresh_source_count"]=len(subset[subset.url.fillna("").ne("")]) if not subset.empty else 0

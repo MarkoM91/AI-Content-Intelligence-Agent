@@ -211,14 +211,15 @@ def _headline_draft(entities, theme, hook, patterns):
     return f"{subject}: {development}"
 
 
-def build_replication_ideas(analyzed, research_df=None, limit=12):
+def build_replication_ideas(analyzed, research_df=None, limit=25):
     """Idee ancorate a tre evidenze: performance reale del vincitore, coperture
     esterne comparabili e forza dei pattern ricorrenti. Nessun punteggio inventato."""
     profile_w, patterns, metric = mine_patterns(analyzed)
     if profile_w.empty:
         return pd.DataFrame()
     pattern_scores = {(r.pattern_type, r.pattern): r.pattern_score for _, r in patterns.iterrows()} if not patterns.empty else {}
-    max_perf = max(float(profile_w.performance.max()), 1.0)
+    max_perf = float(profile_w.performance.max())
+    if max_perf <= 0: max_perf = 1.0
     ideas = []
     for _, w in profile_w.head(limit).iterrows():
         evidence = pd.DataFrame()

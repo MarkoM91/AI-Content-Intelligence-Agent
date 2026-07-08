@@ -69,6 +69,37 @@ button[data-baseweb="tab"]>div[data-testid="stMarkdownContainer"]>p{font-size:.8
 .badge{padding:4px 10px;border-radius:999px;font-weight:800;font-size:.74rem;white-space:nowrap;}
 .src-btn{margin-left:auto;background:var(--ink);color:#fff!important;text-decoration:none;padding:7px 13px;border-radius:8px;font-size:.78rem;font-weight:700;}
 .src-btn:hover{background:var(--accent);}
+div[class*="st-key-card"]{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 5px 20px rgba(23,35,31,.05);padding:1.05rem 1.2rem;}
+.eyebrow-sm{font-size:.68rem;font-weight:800;letter-spacing:.12em;color:#8a978f;text-transform:uppercase;margin:2px 0 6px;}
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-weight:800;font-size:.74rem;white-space:nowrap;}
+.charpill{display:inline-block;background:#eef2ef;border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:700;color:#4c5b54;vertical-align:middle;margin-left:8px;}
+.headline-lg{font-family:'Manrope',sans-serif;font-size:1.32rem;font-weight:800;line-height:1.32;color:var(--ink);margin:0 0 6px;}
+.win-ref{color:#66736e;font-size:.88rem;margin:0 0 2px;line-height:1.4;}
+.src-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px dashed #e4e9e5;}
+.src-row:last-child{border-bottom:none;}
+.src-main{flex:1;min-width:0;}
+.src-main a{color:var(--ink);font-weight:700;font-size:.9rem;text-decoration:none;line-height:1.35;}
+.src-main a:hover{color:var(--accent);}
+.src-sub{color:#79857f;font-size:.76rem;margin-top:2px;}
+.matchbar{width:76px;flex-shrink:0;}
+.matchbar .bar{height:5px;border-radius:3px;background:#e5eae6;overflow:hidden;}
+.matchbar .bar i{display:block;height:5px;background:var(--accent);border-radius:3px;}
+.matchbar .lbl{font-size:.68rem;font-weight:700;color:#6d7a74;text-align:right;margin-top:2px;}
+.advice{color:#56645e;font-size:.92rem;line-height:1.55;margin:.15rem 0 .55rem;}
+.chips{display:flex;flex-wrap:wrap;gap:7px;align-items:center;}
+.chips span{background:#f0f4f1;color:#3c534a;padding:4px 10px;border-radius:7px;font-size:.75rem;font-weight:600;}
+.decision-strip{border-radius:12px;padding:13px 16px;font-size:.92rem;line-height:1.5;margin:0 0 14px;}
+.stat-strip{display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;color:#5b6963;font-size:.85rem;font-weight:600;margin:2px 0 14px;}
+.stat-strip b{color:var(--accent);font-family:'Manrope',sans-serif;font-size:1.1rem;margin-right:4px;}
+.alt-title{display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px dashed #e4e9e5;font-size:.92rem;color:var(--ink);}
+.alt-title:last-child{border-bottom:none;}
+.alt-title .n{color:#9aa6a0;font-weight:800;font-size:.78rem;min-width:14px;}
+div[class*="st-key-navtabs"] [role="radiogroup"]{gap:4px;background:#e9ede9;padding:5px;border-radius:12px;display:flex;flex-wrap:wrap;}
+div[class*="st-key-navtabs"] label{background:transparent;border-radius:9px;padding:9px 16px;margin:0;}
+div[class*="st-key-navtabs"] label>div:first-child{display:none;}
+div[class*="st-key-navtabs"] label p{font-weight:700;font-size:.86rem;color:#5e6c66;}
+div[class*="st-key-navtabs"] label:has(input:checked){background:#fff;box-shadow:0 2px 9px rgba(23,35,31,.08);}
+div[class*="st-key-navtabs"] label:has(input:checked) p{color:var(--ink);}
 @media(max-width:760px){
   .block-container{padding:1rem .85rem 5rem;}
   .hero{padding:25px 22px;border-radius:16px;}
@@ -129,43 +160,63 @@ def _idea_card(item):
             f'<p class="sugg-reason"><b>{decision}</b> · {advice}</p><div class="sugg-meta"><span>Quando · {urgency}</span>'
             f'{ev_chip}<span>Origine · {origin}</span></div></div>')
 
+DECISION_COLORS={"Pubblica ora":("#176b52","#e1f0e8"),"Pubblica subito":("#176b52","#e1f0e8"),"Prepara e valida":("#a76532","#f6ecdf"),"Monitora":("#66736e","#edf1ee"),"Da validare con fonti":("#8a6d3b","#f5efdf"),"Non prioritario":("#8d3f3f","#f7e7e7")}
+def _decision_colors(decision):
+    for key,val in DECISION_COLORS.items():
+        if str(decision).lower().startswith(key.lower()): return val
+    return ("#66736e","#edf1ee")
+
+def _decision_pill(decision):
+    ink,bg=_decision_colors(decision)
+    return f'<span class="pill" style="background:{bg};color:{ink}">{_html.escape(str(decision))}</span>'
+
+def _match_mini(score):
+    s=max(0.0,min(100.0,float(score or 0)))
+    return f'<div class="matchbar"><div class="bar"><i style="width:{s:.0f}%"></i></div><div class="lbl">{s:.0f}%</div></div>'
+
+def _src_row(src):
+    title=_html.escape(str(src.get("title",""))[:110]); url=_html.escape(str(src.get("url","")))
+    publisher=_html.escape(str(src.get("publisher") or src.get("competitor_domain") or ""))
+    date=_html.escape(str(src.get("published_date",""))[:16])
+    sub=publisher+(f" · {date}" if date else "")
+    return (f'<div class="src-row"><div class="src-main"><a href="{url}" target="_blank">{title}</a>'
+            f'<div class="src-sub">{sub}</div></div>{_match_mini(src.get("competitor_match_score",0))}</div>')
+
 def _render_editorial_brief(brief):
     decision=str(brief.get("consiglio_editoriale") or "Da valutare")
     note=str(brief.get("nota_editoriale") or brief.get("perche_adesso") or "")
     title=str(brief.get("titolo_scelto") or brief.get("titolo_consigliato") or "Titolo da definire")
     alternatives=brief.get("titoli_alternativi") or brief.get("varianti_titolo") or []
     meta=str(brief.get("meta_description") or "")
-    st.markdown(f"### {decision}")
-    if note: st.info(note)
-    st.markdown(f"**Titolo scelto · {len(title)} caratteri**\n\n{title}")
+    ink,bg=_decision_colors(decision)
+    st.markdown(f'<div class="decision-strip" style="background:{bg};color:{ink}"><b>{_html.escape(decision)}</b>'+(f" — {_html.escape(note)}" if note else "")+'</div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="eyebrow-sm">Titolo scelto</div><div class="headline-lg">{_html.escape(title)}<span class="charpill">{len(title)} car</span></div>',unsafe_allow_html=True)
     if brief.get("perche_questo_titolo"): st.caption(str(brief["perche_questo_titolo"]))
-    if alternatives:
-        st.markdown("**Alternative di titolo**")
-        for index,alternative in enumerate(alternatives[:5],1):
-            alternative=str(alternative)
-            st.markdown(f"{index}. {alternative} · `{len(alternative)} caratteri`")
-    if meta: st.markdown(f"**Meta description · {len(meta)} caratteri**\n\n{meta}")
-    c1,c2,c3=st.columns(3)
-    c1.markdown(f"**Timing**\n\n{brief.get('timing','Da definire')}")
-    c2.markdown(f"**Formato**\n\n{brief.get('formato_suggerito','Da definire')}")
-    c3.markdown(f"**Focus**\n\n{brief.get('focus_query') or brief.get('target','Da definire')}")
-    st.markdown(f"**Angolo editoriale**\n\n{brief.get('angolo','Da definire')}")
-    st.markdown(f"**Cosa aggiunge rispetto agli altri**\n\n{brief.get('differenziazione','Da definire')}")
+    st.markdown(f'<div class="chips" style="margin:10px 0 14px"><span>Timing · {_html.escape(str(brief.get("timing","Da definire")))}</span><span>Formato · {_html.escape(str(brief.get("formato_suggerito","Da definire")))}</span><span>Focus · {_html.escape(str(brief.get("focus_query") or brief.get("target","Da definire")))}</span></div>',unsafe_allow_html=True)
+    if meta: st.markdown(f'<div class="eyebrow-sm">Meta description</div><p style="margin:.1rem 0 .9rem;font-size:.94rem">{_html.escape(meta)}<span class="charpill">{len(meta)} car</span></p>',unsafe_allow_html=True)
     bozza=brief.get("bozza_articolo") or []
     if bozza:
-        st.markdown("**Bozza pronta per il CMS** — scritta solo dai fatti raccolti dalle fonti web")
-        for paragraph in bozza: st.markdown(str(paragraph))
-    sections=[("Scelte editoriali","scelte_editoriali"),("Elementi nuovi da trovare","elementi_nuovi"),("Struttura consigliata","struttura_articolo"),("Fonti e verifiche","fonti_da_verificare"),("Azioni della redazione","azioni_consigliate")]
-    for label,key in sections:
-        values=brief.get(key) or (brief.get("outline") if key=="struttura_articolo" else [])
-        if values:
-            st.markdown(f"**{label}**")
-            for value in values: st.markdown(f"- {value}")
-    if brief.get("link_interno"): st.markdown(f"**Link interno suggerito**\n\n{brief['link_interno']}")
+        with st.container(key=f"card_bozza_{brief.get('idea_id','x')}"):
+            st.markdown('<div class="eyebrow-sm">Bozza pronta per il CMS · scritta solo dai fatti raccolti</div>',unsafe_allow_html=True)
+            for paragraph in bozza: st.markdown(str(paragraph))
+    else:
+        st.caption("La bozza completa del pezzo si genera con il motore «AI con LLM» (barra laterale) dopo la ricerca web: viene scritta solo dai fatti raccolti dalle fonti.")
+    if alternatives:
+        st.markdown('<div class="eyebrow-sm" style="margin-top:14px">Titoli alternativi</div>'+"".join(f'<div class="alt-title"><span class="n">{i}</span><span>{_html.escape(str(a))}</span><span class="charpill">{len(str(a))} car</span></div>' for i,a in enumerate(alternatives[:5],1)),unsafe_allow_html=True)
+    if brief.get("scelte_editoriali"):
+        st.markdown('<div class="eyebrow-sm" style="margin-top:14px">Scelte editoriali</div>',unsafe_allow_html=True)
+        for value in brief["scelte_editoriali"]: st.markdown(f"- {value}")
+    with st.expander("Istruzioni operative per la redazione"):
+        st.markdown(f"**Angolo**  \n{brief.get('angolo','Da definire')}")
+        st.markdown(f"**Cosa aggiunge rispetto agli altri**  \n{brief.get('differenziazione','Da definire')}")
+        for label,key in (("Elementi nuovi da trovare","elementi_nuovi"),("Struttura consigliata","struttura_articolo"),("Fonti e verifiche","fonti_da_verificare"),("Azioni della redazione","azioni_consigliate")):
+            values=brief.get(key) or (brief.get("outline") if key=="struttura_articolo" else [])
+            if values:
+                st.markdown(f"**{label}**")
+                for value in values: st.markdown(f"- {value}")
+        if brief.get("link_interno"): st.markdown(f"**Link interno suggerito**  \n{brief['link_interno']}")
     if brief.get("rischi_note"): st.warning(f"Rischi e cautele: {brief['rischi_note']}")
-    st.markdown("**Title e meta per il CMS**")
-    st.code(f"Title ({len(title)} caratteri):\n{title}\n\nMeta description ({len(meta)} caratteri):\n{meta or 'Da definire'}",language=None)
-    if brief.get("stima_potenziale"): st.caption(f"Stima: {brief['stima_potenziale']}")
+    if brief.get("stima_potenziale"): st.caption(f"Stima distribuzione: {brief['stima_potenziale']}")
 
 def _show_table(df):
     """Tabella con formattazione ricca: barre per gli score, CTR in %,
@@ -226,6 +277,8 @@ with st.sidebar:
     brief_mode=st.radio("Motore",["AI con LLM","Regole locali"])
     llm_provider=st.selectbox("LLM",["OpenAI","Anthropic"],disabled=brief_mode=="Regole locali")
     model=st.text_input("Modello (vuoto = predefinito)",disabled=brief_mode=="Regole locali")
+    if brief_mode=="AI con LLM" and not os.getenv("OPENAI_API_KEY" if llm_provider=="OpenAI" else "ANTHROPIC_API_KEY"):
+        st.warning(f"Nessuna chiave {llm_provider} trovata in .env: la bozza completa non verrà scritta e il pezzo userà le regole locali. Aggiungi la chiave a .env e riavvia.")
     with st.expander("Impostazioni avanzate"):
         research_provider=st.selectbox("Provider ricerca web",["AI (LLM) + Web scraper","Serper + Google News","Web scraper + Google News","Hermes Agent + Web scraper","Google News RSS","RSS personalizzati","Piano locale"],help="AI (LLM) usa match semantico via embeddings; Hermes Agent delega la validazione profonda delle evidenze all'agente locale. Senza API key il sistema torna alle euristiche locali.")
         engagement_loaded=st.session_state.analyzed is not None and "pageviews" in st.session_state.analyzed
@@ -253,11 +306,23 @@ def _develop_idea(idea):
         ev=research[research.source_url.eq(idea.get("source_url","")) & research.url.fillna("").ne("")]
         if "competitor_match_score" in ev.columns: ev=ev.sort_values("competitor_match_score",ascending=False)
         parts=[]
-        for _,r in ev.head(4).iterrows():
-            text=str(r.get("scraped_excerpt") or r.get("snippet") or "").strip()[:1500]
+        for _,r in ev.head(6).iterrows():
+            text=str(r.get("scraped_excerpt") or r.get("snippet") or "").strip()[:2400]
             if text: parts.append(f"FONTE: {r.get('title','')} ({r.get('competitor_domain','')}, {r.get('published_date','')})\n{text}")
-        materiale="\n\n".join(parts)[:6000]
-    idea={**idea,"materiale_fonti":materiale}
+        base=st.session_state.analyzed
+        if base is not None and "paragraph_context" in base.columns:
+            own=base.loc[base.url.eq(idea.get("source_url","")),"paragraph_context"]
+            own_text=str(own.iloc[0] if len(own) else "").strip()
+            if own_text: parts.insert(0,f"IL TUO ARTICOLO CHE HA FUNZIONATO (contesto di background):\n{own_text[:2000]}")
+        materiale="\n\n".join(parts)[:12000]
+    winners=st.session_state.winners_profile
+    winning_titles=""
+    if winners is not None and not winners.empty:
+        titles=[str(t).strip() for t in winners.title.head(15) if str(t).strip() and len(str(t).split())>2]
+        real=[t for t in titles if any(c.isupper() for c in t)]
+        winning_titles="\n".join(f"- {t}" for t in (real or titles)[:8])
+        if not real: winning_titles+="\n(Nota: sono slug di URL, non titoli reali: deducine i temi, ma modella lo stile del titolo sui veri titoli di quotidiano presenti in materiale_fonti.)"
+    idea={**idea,"materiale_fonti":materiale,"titoli_vincenti":winning_titles}
     row={**idea,"url":idea.get("source_url",""),"topic":idea.get("theme",""),"title":idea.get("source_title",""),"keywords":idea.get("entities",""),"status":idea.get("editorial_decision",""),"winning_cluster":f"{idea.get('theme','')} · {idea.get('hook','')}","winning_hook":idea.get("hook",""),"recommended_format":idea.get("format",""),"editorial_advice":idea.get("replication_advice",""),"proposed_argument":f"Replicare il pattern vincente ({idea.get('title_recipe','')}) su uno sviluppo nuovo dello stesso interesse.","discover_potential":idea.get("replication_score",0),"opportunity_score":idea.get("replication_score",0),"fresh_research_summary":idea.get("comparable_titles","") or idea.get("differentiation","")}
     brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
     brief.update({"source_url":row["url"],"idea_id":iid,"replication_score":idea.get("replication_score",0),"origin_cluster":row["winning_cluster"],"origin_pattern":idea.get("title_recipe",""),"stato_produzione":"In revisione","owner":"Da assegnare","deadline":"","published_url":""})
@@ -265,9 +330,12 @@ def _develop_idea(idea):
     st.session_state.approvals=[a for a in st.session_state.approvals if a.get("idea_id")!=iid]+[{**a,"source_url":row["url"],"idea_id":iid} for a in propose_actions(brief,row)]
     return error
 
-tabs=st.tabs(["01  Cosa ha funzionato","02  Cosa pubblicare","03  Brief e consegna"])
+NAV_TABS=["01 · Cosa ha funzionato","02 · Cosa pubblicare","03 · Pubblica subito"]
+_goto=st.session_state.pop("_goto_tab",None)
+if _goto in NAV_TABS: st.session_state.navtabs=_goto
+nav=st.radio("Fase del workflow",NAV_TABS,horizontal=True,key="navtabs",label_visibility="collapsed")
 
-with tabs[0]:
+if nav==NAV_TABS[0]:
     st.caption("STEP 01 · LA DIAGNOSI DEL MATTINO")
     st.subheader("Cosa ha funzionato — e cosa vale la pena ripetere")
     if input_mode=="Demo CSV":
@@ -364,16 +432,31 @@ with tabs[0]:
         if st.session_state.crawl_log:
             with st.expander("Log del crawler"): st.dataframe(pd.DataFrame(st.session_state.crawl_log),use_container_width=True)
 
-def _develop_button(item,briefed):
-    c1,c2=st.columns([1,4])
-    label="Aggiorna brief" if item.idea_id in briefed else "Sviluppa il brief"
-    if c1.button(label,key=f"dev_{item.idea_id}"):
-        error=_develop_idea(item.to_dict())
-        if error: st.warning(error)
-        else: st.success("Brief pronto nella scheda 03.")
-    if item.idea_id in briefed: c2.caption("Brief già creato: lo trovi nella scheda 03 · Brief e consegna.")
+def _render_dossier(item,adjacent,briefed):
+    """Un dossier per opportunità: da cosa nasce, cosa esce sul web, la proposta."""
+    iid=item.idea_id
+    with st.container(key=f"card_dossier_{iid}"):
+        head_l,head_r=st.columns([4,1.5],vertical_alignment="center")
+        head_l.markdown(f'<div class="eyebrow-sm">Da cosa nasce</div><p class="win-ref">{_html.escape(str(item.source_title)[:110])}</p>',unsafe_allow_html=True)
+        head_r.markdown(f'<div style="text-align:right">{_decision_pill(item.editorial_decision)}</div>',unsafe_allow_html=True)
+        if len(adjacent):
+            st.markdown('<div class="eyebrow-sm" style="margin-top:8px">Cosa sta uscendo sul web</div>'+"".join(_src_row(src) for _,src in adjacent.iterrows()),unsafe_allow_html=True)
+        else:
+            ev=int(item.evidence_count or 0)
+            if ev: st.caption(f"{ev} coperture trovate ma sotto la soglia di pertinenza ({min_match}%): abbassala nelle impostazioni avanzate per vederle.")
+            else: st.caption("Nessuna copertura adiacente trovata: interesse da monitorare, non forzare l'uscita.")
+        st.markdown(f'<div class="eyebrow-sm" style="margin-top:12px">La proposta</div><div class="headline-lg">{_html.escape(str(item.recommended_headline))}</div><p class="advice">{_html.escape(str(item.replication_advice))}</p>',unsafe_allow_html=True)
+        foot_l,foot_r=st.columns([2.6,1.3],vertical_alignment="center")
+        foot_l.markdown(f'<div class="chips"><span>Quando · {_html.escape(str(item.urgency))}</span><span>{int(item.evidence_count or 0)} fonti web</span><span>Priorità {float(item.replication_score or 0):.0f}</span></div>',unsafe_allow_html=True)
+        if foot_r.button("Aggiorna il pezzo" if iid in briefed else "Sviluppa il pezzo",key=f"dev_{iid}",type="primary" if str(item.editorial_decision)=="Pubblica ora" else "secondary",use_container_width=True):
+            with st.spinner("Scrivo il pezzo dai fatti raccolti..."):
+                error=_develop_idea(item.to_dict())
+            if error: st.session_state["_dev_note"]=error
+            st.session_state["_goto_tab"]="03 · Pubblica subito"
+            st.rerun()
+        if iid in briefed: st.caption("Pezzo già creato: lo trovi nella scheda 03 · Pubblica subito.")
 
-with tabs[1]:
+if nav==NAV_TABS[1]:
     st.caption("STEP 02 · LA SCHERMATA DEL MATTINO")
     st.subheader("Cosa pubblicare oggi")
     if st.session_state.analyzed is None: st.info("Prima carica i dati nella scheda 01.")
@@ -384,7 +467,6 @@ with tabs[1]:
         use_llm=provider=="AI (LLM) + Web scraper"
         use_serper=provider=="Serper + Google News"
         if provider in ("Hermes Agent + Web scraper","AI (LLM) + Web scraper","Google News RSS","Serper + Google News"): provider="Web scraper + Google News"
-        st.markdown("Scegli un articolo che ha funzionato: il sistema naviga il web — Google News, i siti dei competitor, i feed di settore — legge le pagine e trova **contenuti adiacenti**: stesso interesse del pubblico, sviluppo nuovo.")
         if use_hermes:
             from src.fresh_research import hermes_available
             if not hermes_available(hermes_command): st.caption("Hermes Agent non trovato nel PATH: la ricerca funzionerà comunque con lo scoring locale.")
@@ -396,12 +478,16 @@ with tabs[1]:
             for _,w in top25.iterrows():
                 value=f"{w.performance*100:.1f}% CTR" if st.session_state.perf_metric=="ctr_current" else f"{int(w.performance)} {'click' if st.session_state.perf_metric=='clicks_current' else 'punti'}"
                 seed_labels[w.url]=f"{str(w.title)[:80]} · {value}"
-        selected_seed=st.selectbox("Articolo che ha funzionato (top 25)",list(seed_labels),format_func=lambda v: seed_labels.get(v,v))
-        if st.button("Cerca sul web i contenuti adiacenti",type="primary"):
+        ctrl_l,ctrl_r=st.columns([3,1.25],vertical_alignment="bottom")
+        selected_seed=ctrl_l.selectbox("Parti da un articolo che ha funzionato (top 25)",list(seed_labels),format_func=lambda v: seed_labels.get(v,v),help="Il sistema naviga Google News, i siti dei competitor e i feed di settore, legge le pagine e trova contenuti adiacenti: stesso interesse del pubblico, sviluppo nuovo.")
+        if ctrl_r.button("Cerca sul web",type="primary",use_container_width=True):
             with st.status("Navigo il web alla ricerca di contenuti adiacenti...",expanded=False) as _status:
                 def _progress(done,total,label): _status.update(label=f"({done}/{total}) Cerco e leggo le coperture adiacenti a «{label}»...")
                 base=st.session_state.analyzed
-                target=base if selected_seed==AUTO_SEED else base[base.url.eq(selected_seed)]
+                if selected_seed==AUTO_SEED:
+                    target=base[base.url.isin(top25.head(5).url)] if top25 is not None else base
+                else:
+                    target=base[base.url.eq(selected_seed)]
                 research,_,notes=add_research_to_dataframe(target,provider,own_domain,[x for x in feeds.splitlines() if x.strip()],max_topics=5 if selected_seed==AUTO_SEED else 1,audience_context=context,use_hermes=use_hermes,hermes_command=hermes_command,use_llm=use_llm,llm_provider=llm_provider,llm_model=model,seed_strategy=seed_strategy,freshness=freshness,include_reddit=include_reddit,serper_api_key=os.getenv("SERPER_API_KEY","") if use_serper else "",progress=_progress)
                 old=st.session_state.research_df
                 if old is not None and not getattr(old,"empty",True) and "source_url" in research and "source_url" in old:
@@ -415,34 +501,25 @@ with tabs[1]:
         research=st.session_state.research_df
         briefed={b.get("idea_id") for b in st.session_state.briefs}
         if research is None:
+            with st.container(key="card_empty02"):
+                st.markdown('<div style="text-align:center;padding:30px 18px 34px"><div class="eyebrow-sm">La schermata del mattino parte da qui</div>'
+                            '<div class="headline-lg" style="max-width:520px;margin:6px auto 8px">Scegli un articolo che ha funzionato e lancia la ricerca.</div>'
+                            '<p style="color:#66736e;max-width:520px;margin:0 auto;font-size:.92rem;line-height:1.6">Il sistema naviga il web, legge le pagine e ti riporta i contenuti adiacenti già in uscita: per ogni articolo vincente ricevi le fonti trovate e una proposta pronta da sviluppare.</p></div>',unsafe_allow_html=True)
             if ideas is not None and not ideas.empty:
-                st.caption("In attesa della ricerca web, queste sono le prime proposte basate solo sui tuoi dati.")
-                for _,item in ideas.head(3).iterrows():
-                    st.markdown(_idea_card(item),unsafe_allow_html=True)
-                    _develop_button(item,briefed)
+                with st.expander("Proposte preliminari basate solo sui tuoi dati (senza validazione web)"):
+                    for _,item in ideas.head(3).iterrows(): st.markdown(_idea_card(item),unsafe_allow_html=True)
         elif ideas is not None and not ideas.empty:
             real=research[research.url.fillna("").ne("")] if "url" in research else research.iloc[0:0]
             if "competitor_match_score" in real.columns: real=real[pd.to_numeric(real.competitor_match_score,errors="coerce").fillna(0).ge(min_match)]
             ready=int(ideas.editorial_decision.isin(["Pubblica ora","Prepara e valida"]).sum())
-            m1,m2,m3=st.columns(3)
-            m1.metric("Contenuti adiacenti trovati",len(real)); m2.metric("Proposte pronte",ready); m3.metric("Finestra fonti",freshness_label)
+            window_label={"1d":"24h","7d":"7 giorni","30d":"30 giorni"}.get(freshness,freshness)
+            st.markdown(f'<div class="stat-strip"><span><b>{len(real)}</b>contenuti adiacenti</span><span><b>{ready}</b>proposte pronte</span><span><b>{window_label}</b>finestra fonti</span></div>',unsafe_allow_html=True)
             researched=set(research[research.url.fillna("").ne("")].source_url.unique()) if "source_url" in research.columns and "url" in research.columns else set()
             groups=ideas[ideas.source_url.isin(researched)] if researched else ideas.head(5)
+            if researched and groups.empty: groups=ideas.head(5)
             for _,item in groups.head(8).iterrows():
-                st.markdown("---")
-                st.markdown(f"**Ha funzionato da te** · {item.source_title}")
                 adjacent=real[real.source_url.eq(item.source_url)].head(3) if "source_url" in real.columns else real.iloc[0:0]
-                if len(adjacent):
-                    st.markdown("**Cosa sta uscendo di adiacente sul web**")
-                    for _,src in adjacent.iterrows():
-                        publisher=str(src.get("publisher") or src.get("competitor_domain") or "")
-                        st.markdown(f"- [{src.title}]({src.url}) — {publisher} · pertinenza {float(src.competitor_match_score or 0):.0f}%")
-                else:
-                    ev=int(item.evidence_count or 0)
-                    if ev: st.caption(f"{ev} coperture trovate ma sotto la soglia di pertinenza ({min_match}%): abbassala nelle impostazioni avanzate per vederle.")
-                    else: st.caption("Nessuna copertura adiacente trovata: interesse da monitorare, non forzare l'uscita.")
-                st.markdown(_idea_card(item),unsafe_allow_html=True)
-                _develop_button(item,briefed)
+                _render_dossier(item,adjacent,briefed)
             with st.expander("Dettaglio completo per analisti"):
                 st.markdown("**Tutte le idee con lo scoring trasparente** — priorità = performance del vincitore + fonti web + forza dei pattern.")
                 _show_table(ideas)
@@ -459,42 +536,58 @@ with tabs[1]:
                         st.markdown(_suggestion_card({"article_suggestion":suggestion.get("title","Idea AI"),"audience_reason":suggestion.get("audience_reason",""),"recommended_format":suggestion.get("format",""),"angle":suggestion.get("angle",""),"url":urls[0] if isinstance(urls,list) and urls else "","competitor_match_score":0}),unsafe_allow_html=True)
         else: st.info("Nessuna proposta generata: servono più segnali nella scheda 01.")
 
-with tabs[2]:
+if nav==NAV_TABS[2]:
     st.caption("STEP 03 · PUBBLICA SUBITO")
-    st.subheader("Il pezzo pronto: titolo scelto, bozza, title e meta per il CMS")
-    st.write("Con il motore AI la bozza viene scritta solo dai fatti raccolti dalle fonti web, con titoli alternativi in caratteri contati e le scelte editoriali motivate. Le azioni esterne restano in approvazione umana.")
-    if not st.session_state.briefs: st.info("Sviluppa un'idea nella scheda 02: il pezzo completo apparirà qui.")
+    st.subheader("Il pezzo pronto per il CMS")
+    _dev_note=st.session_state.pop("_dev_note",None)
+    if _dev_note: st.warning(_dev_note)
+    if not st.session_state.briefs:
+        with st.container(key="card_empty03"):
+            st.markdown('<div style="text-align:center;padding:30px 18px 34px"><div class="eyebrow-sm">Nessun pezzo ancora</div>'
+                        '<div class="headline-lg" style="max-width:520px;margin:6px auto 8px">Sviluppa una proposta nella scheda 02.</div>'
+                        '<p style="color:#66736e;max-width:520px;margin:0 auto;font-size:.92rem;line-height:1.6">Qui troverai il pezzo completo: titolo scelto in caratteri contati, bozza scritta solo dai fatti raccolti, scelte editoriali motivate e la scheda di produzione con approvazioni ed export.</p></div>',unsafe_allow_html=True)
     else:
         publish_ok={a.get("idea_id") for a in st.session_state.approvals if str(a.get("azione","")).startswith("Pubblicare") and a.get("stato") in ("Approva","Auto-approvata")}
         for b in st.session_state.briefs:
             if b.get("idea_id") in publish_ok and b.get("stato_produzione")=="In revisione": b["stato_produzione"]="Approvato"
         states=["In revisione","Approvato","Assegnato","Pubblicato","Archiviato"]
-        s1,s2,s3=st.columns(3)
-        s1.metric("Brief attivi",len(st.session_state.briefs))
-        s2.metric("Approvati",sum(b.get("stato_produzione") in ("Approvato","Assegnato","Pubblicato") for b in st.session_state.briefs))
-        s3.metric("Pubblicati",sum(b.get("stato_produzione")=="Pubblicato" for b in st.session_state.briefs))
-        for i,b in enumerate(reversed(st.session_state.briefs)):
-            iid=b.get("idea_id",f"brief{i}")
-            title=b.get("titolo_scelto") or b.get("titolo_consigliato") or f"Brief {i+1}"
-            with st.expander(f"{b.get('stato_produzione','In revisione')} · {title}",expanded=i==0):
-                _render_editorial_brief(b)
-                st.markdown("---")
-                c1,c2,c3,c4=st.columns(4)
-                b["stato_produzione"]=c1.selectbox("Stato",states,index=states.index(b.get("stato_produzione","In revisione")),key=f"stato_{iid}")
-                b["owner"]=c2.text_input("Owner",b.get("owner","Da assegnare"),key=f"owner_{iid}")
-                b["deadline"]=c3.text_input("Deadline",b.get("deadline",""),placeholder="YYYY-MM-DD",key=f"deadline_{iid}")
-                b["published_url"]=c4.text_input("URL pubblicato",b.get("published_url",""),key=f"purl_{iid}")
-                approvals=[a for a in st.session_state.approvals if a.get("idea_id")==iid]
-                if approvals:
-                    st.markdown("**Decisioni da prendere**")
+        briefs=list(reversed(st.session_state.briefs))
+        approved=sum(b.get("stato_produzione") in ("Approvato","Assegnato","Pubblicato") for b in briefs)
+        published=sum(b.get("stato_produzione")=="Pubblicato" for b in briefs)
+        st.markdown(f'<div class="stat-strip"><span><b>{len(briefs)}</b>pezzi attivi</span><span><b>{approved}</b>approvati</span><span><b>{published}</b>pubblicati</span></div>',unsafe_allow_html=True)
+        if len(briefs)>1:
+            pick_labels={b.get("idea_id",str(i)): f"{b.get('stato_produzione','In revisione')} — {(b.get('titolo_scelto') or b.get('titolo_consigliato') or f'Pezzo {i+1}')[:46]}" for i,b in enumerate(briefs)}
+            picked=st.radio("Pezzo",list(pick_labels),format_func=lambda k: pick_labels[k],horizontal=True,label_visibility="collapsed")
+            b=next(x for x in briefs if x.get("idea_id")==picked)
+        else: b=briefs[0]
+        iid=b.get("idea_id","brief0")
+        title=str(b.get("titolo_scelto") or b.get("titolo_consigliato") or "Titolo da definire")
+        meta=str(b.get("meta_description") or "")
+        main,side=st.columns([2.15,1],gap="large")
+        with main:
+            _render_editorial_brief(b)
+        with side:
+            st.markdown('<div class="eyebrow-sm">Scheda di produzione</div>',unsafe_allow_html=True)
+            with st.container(key=f"card_prod_{iid}"):
+                b["stato_produzione"]=st.selectbox("Stato",states,index=states.index(b.get("stato_produzione","In revisione")),key=f"stato_{iid}")
+                b["owner"]=st.text_input("Owner",b.get("owner","Da assegnare"),key=f"owner_{iid}")
+                b["deadline"]=st.text_input("Deadline",b.get("deadline",""),placeholder="YYYY-MM-DD",key=f"deadline_{iid}")
+                b["published_url"]=st.text_input("URL pubblicato",b.get("published_url",""),key=f"purl_{iid}")
+            approvals=[a for a in st.session_state.approvals if a.get("idea_id")==iid]
+            if approvals:
+                st.markdown('<div class="eyebrow-sm" style="margin-top:14px">Approvazioni</div>',unsafe_allow_html=True)
+                with st.container(key=f"card_appr_{iid}"):
+                    opts=["In attesa","Approva","Modifica","Rifiuta","Auto-approvata"]
                     for j,a in enumerate(approvals):
-                        a1,a2,a3=st.columns([4,1,2])
-                        a1.markdown(f"**{a['azione']}**  \n{a['motivo']} — Responsabile: {a['responsabile']}"); a2.write(f"Rischio: {a['rischio']}")
-                        opts=["In attesa","Approva","Modifica","Rifiuta","Auto-approvata"]
-                        a["stato"]=a3.selectbox("Stato",opts,index=opts.index(a["stato"]),key=f"appr_{iid}_{j}",label_visibility="collapsed")
-        st.subheader("Consegna ed export")
-        md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client)
-        workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label,"winning_patterns":[] if st.session_state.patterns is None else st.session_state.patterns.to_dict("records"),"replication_ideas":[] if st.session_state.ideas is None else st.session_state.ideas.to_dict("records")})
-        c1,c2,c3=st.columns(3); c1.download_button("Scarica report Markdown",md,"report_ai_content.md","text/markdown"); c2.download_button("Scarica CSV analizzato",st.session_state.analyzed.to_csv(index=False).encode("utf-8-sig"),"contenuti_analizzati.csv","text/csv") if st.session_state.analyzed is not None else None; c3.download_button("Scarica workflow JSON",workflow,"workflow.json","application/json")
-        if st.session_state.research_df is not None: st.download_button("Scarica ricerca competitor CSV",st.session_state.research_df.to_csv(index=False).encode("utf-8-sig"),"ricerca_competitor.csv","text/csv")
+                        st.markdown(f'{a["azione"]}  \n<span style="font-size:.78rem;color:#79857f">{a["motivo"]} · Rischio {a["rischio"].lower()} · {a["responsabile"]}</span>',unsafe_allow_html=True)
+                        a["stato"]=st.selectbox("Stato",opts,index=opts.index(a["stato"]),key=f"appr_{iid}_{j}",label_visibility="collapsed")
+            st.markdown('<div class="eyebrow-sm" style="margin-top:14px">Title e meta per il CMS</div>',unsafe_allow_html=True)
+            st.code(f"Title ({len(title)} car):\n{title}\n\nMeta description ({len(meta)} car):\n{meta or 'Da definire'}",language=None)
+            st.markdown('<div class="eyebrow-sm" style="margin-top:14px">Consegna</div>',unsafe_allow_html=True)
+            md=generate_markdown_report(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,client)
+            workflow=generate_json_export(st.session_state.analyzed,st.session_state.research_df,st.session_state.briefs,st.session_state.approvals,{"client":client,"mode":st.session_state.mode_label,"winning_patterns":[] if st.session_state.patterns is None else st.session_state.patterns.to_dict("records"),"replication_ideas":[] if st.session_state.ideas is None else st.session_state.ideas.to_dict("records")})
+            st.download_button("Report Markdown",md,"report_ai_content.md","text/markdown",use_container_width=True)
+            if st.session_state.analyzed is not None: st.download_button("CSV analizzato",st.session_state.analyzed.to_csv(index=False).encode("utf-8-sig"),"contenuti_analizzati.csv","text/csv",use_container_width=True)
+            st.download_button("Workflow JSON",workflow,"workflow.json","application/json",use_container_width=True)
+            if st.session_state.research_df is not None: st.download_button("Ricerca competitor CSV",st.session_state.research_df.to_csv(index=False).encode("utf-8-sig"),"ricerca_competitor.csv","text/csv",use_container_width=True)
         with st.expander("Report completo"): st.markdown(md)
