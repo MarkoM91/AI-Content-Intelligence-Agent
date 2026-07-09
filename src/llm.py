@@ -17,18 +17,19 @@ def _call_llm(prompt,provider,model,max_tokens=4500):
     if provider=="Anthropic":
         from anthropic import Anthropic
         key=os.getenv("ANTHROPIC_API_KEY"); assert key,"ANTHROPIC_API_KEY mancante"
-        return Anthropic(api_key=key).messages.create(model=model or "claude-3-5-sonnet-latest",max_tokens=max_tokens,messages=[{"role":"user","content":prompt}]).content[0].text
+        return Anthropic(api_key=key,timeout=90.0,max_retries=1).messages.create(model=model or "claude-3-5-sonnet-latest",max_tokens=max_tokens,messages=[{"role":"user","content":prompt}]).content[0].text
     from openai import OpenAI
     key=os.getenv("OPENAI_API_KEY"); assert key,"OPENAI_API_KEY mancante"
-    return OpenAI(api_key=key).chat.completions.create(model=model or "gpt-4o",messages=[{"role":"user","content":prompt}],response_format={"type":"json_object"}).choices[0].message.content
+    return OpenAI(api_key=key,timeout=90.0,max_retries=1).chat.completions.create(model=model or "gpt-4o",messages=[{"role":"user","content":prompt}],response_format={"type":"json_object"}).choices[0].message.content
 
-def _expand_bozza(row,brief,provider,model):
+def _expand_bozza(row,brief,provider,model,notify=None):
     """Seconda passata dedicata al pezzo: i modelli tagliano la bozza quando devono
     riempire 17 campi JSON insieme; una chiamata solo-articolo rispetta la lunghezza."""
     materiale=str(row.get("materiale_fonti","") or "").strip()
     if not materiale: return brief
     words=sum(len(str(p).split()) for p in brief.get("bozza_articolo") or [])
     if words>=350: return brief
+    if notify: notify("Seconda passata: scrivo l'articolo completo (500-800 parole)...")
     prompt=(f"Sei un redattore di un quotidiano online italiano. Scrivi l'articolo COMPLETO pronto per il CMS.\n"
             f"Titolo scelto: {brief.get('titolo_scelto','')}\nAngolo: {brief.get('angolo','')}\n"
             f"Regole vincolanti: 7-10 paragrafi, 500-800 parole totali, ogni paragrafo 60-100 parole; usa ESCLUSIVAMENTE fatti, nomi, numeri, date e virgolettati presenti nel MATERIALE (attribuisci sempre: «secondo...», virgolettati solo se presenti); condizionale dove non confermato; apertura sul fatto nuovo, contesto e cronologia, sviluppo con dati e dichiarazioni, chiusura sulle domande aperte; nessun fatto inventato.\n"
@@ -40,9 +41,10 @@ def _expand_bozza(row,brief,provider,model):
     except Exception: pass
     return brief
 
-def generate_brief(row,mode="Regole locali",provider="OpenAI",model="",client_context="",goal="Crescita organica"):
+def generate_brief(row,mode="Regole locali",provider="OpenAI",model="",client_context="",goal="Crescita organica",notify=None):
     if mode=="Regole locali": return local_brief(row,client_context,goal),None
     try:
+        if notify: notify(f"Scrivo brief, titoli e meta con {provider}...")
         brief=_parse(_call_llm(_prompt(row,client_context,goal),provider,model))
-        return _expand_bozza(row,brief,provider,model),None
+        return _expand_bozza(row,brief,provider,model,notify),None
     except Exception as e: return local_brief(row,client_context,goal),f"Fallback alle regole locali: {e}"

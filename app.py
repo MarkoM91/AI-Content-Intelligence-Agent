@@ -295,7 +295,7 @@ with st.sidebar:
         max_crawl=st.slider("URL da approfondire col crawler",1,20,5)
         delay=st.number_input("Pausa tra richieste (s)",0.0,5.0,.2,.1)
 
-def _develop_idea(idea):
+def _develop_idea(idea,notify=None):
     """Trasforma un'idea in brief operativo con coda di approvazione.
     Passa al motore anche gli estratti delle fonti web, così il pezzo
     può essere scritto solo dai fatti raccolti."""
@@ -324,7 +324,7 @@ def _develop_idea(idea):
         if not real: winning_titles+="\n(Nota: sono slug di URL, non titoli reali: deducine i temi, ma modella lo stile del titolo sui veri titoli di quotidiano presenti in materiale_fonti.)"
     idea={**idea,"materiale_fonti":materiale,"titoli_vincenti":winning_titles}
     row={**idea,"url":idea.get("source_url",""),"topic":idea.get("theme",""),"title":idea.get("source_title",""),"keywords":idea.get("entities",""),"status":idea.get("editorial_decision",""),"winning_cluster":f"{idea.get('theme','')} · {idea.get('hook','')}","winning_hook":idea.get("hook",""),"recommended_format":idea.get("format",""),"editorial_advice":idea.get("replication_advice",""),"proposed_argument":f"Replicare il pattern vincente ({idea.get('title_recipe','')}) su uno sviluppo nuovo dello stesso interesse.","discover_potential":idea.get("replication_score",0),"opportunity_score":idea.get("replication_score",0),"fresh_research_summary":idea.get("comparable_titles","") or idea.get("differentiation","")}
-    brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal)
+    brief,error=generate_brief(row,brief_mode,llm_provider,model,context,goal,notify=notify)
     brief.update({"source_url":row["url"],"idea_id":iid,"replication_score":idea.get("replication_score",0),"origin_cluster":row["winning_cluster"],"origin_pattern":idea.get("title_recipe",""),"stato_produzione":"In revisione","owner":"Da assegnare","deadline":"","published_url":""})
     st.session_state.briefs=[b for b in st.session_state.briefs if b.get("idea_id")!=iid]+[brief]
     st.session_state.approvals=[a for a in st.session_state.approvals if a.get("idea_id")!=iid]+[{**a,"source_url":row["url"],"idea_id":iid} for a in propose_actions(brief,row)]
@@ -449,8 +449,10 @@ def _render_dossier(item,adjacent,briefed):
         foot_l,foot_r=st.columns([2.6,1.3],vertical_alignment="center")
         foot_l.markdown(f'<div class="chips"><span>Quando · {_html.escape(str(item.urgency))}</span><span>{int(item.evidence_count or 0)} fonti web</span><span>Priorità {float(item.replication_score or 0):.0f}</span></div>',unsafe_allow_html=True)
         if foot_r.button("Aggiorna il pezzo" if iid in briefed else "Sviluppa il pezzo",key=f"dev_{iid}",type="primary" if str(item.editorial_decision)=="Pubblica ora" else "secondary",use_container_width=True):
-            with st.spinner("Scrivo il pezzo dai fatti raccolti..."):
-                error=_develop_idea(item.to_dict())
+            with st.status("Preparo il pezzo dai fatti raccolti (1-2 minuti)...",expanded=True) as _pstat:
+                def _note(msg): _pstat.update(label=msg)
+                error=_develop_idea(item.to_dict(),notify=_note)
+                _pstat.update(label="Pezzo pronto: apro la scheda 03.",state="complete")
             if error: st.session_state["_dev_note"]=error
             st.session_state["_goto_tab"]="03 · Pubblica subito"
             st.rerun()
